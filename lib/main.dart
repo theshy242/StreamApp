@@ -4,6 +4,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:untitled5/FirebaseTestPage.dart';
 import 'package:untitled5/Mystreamlistpasge.dart';
 import 'package:untitled5/SplashScreen.dart';
+import 'package:untitled5/Screen/info_user_screen.dart';
 import 'LoGinScreen.dart';
 import 'HomeScreen.dart';
 
@@ -36,6 +37,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/login': (context) => LoginScreenb(), // màn hình login
         '/home': (context) => HomeScreen(),   // nếu cần
+        '/info': (context) => InfoUserScreen(),
       },
     );
   }
