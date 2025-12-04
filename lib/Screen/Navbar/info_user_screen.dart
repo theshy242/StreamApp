@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
+import 'bottom_navbar.dart';
+
 class InfoUserScreen extends StatelessWidget {
   const InfoUserScreen({super.key}); // <-- FIX key warning
 
@@ -184,6 +186,7 @@ class InfoUserScreen extends StatelessWidget {
           ),
         ],
       ),
+        bottomNavigationBar:  BottomNavBar(parentContext: context,currentIndex: 3,)
     );
   }
 }

@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../Constants/colors.dart';
+import 'Navbar/bottom_navbar.dart';
 import 'live_stream_screen.dart';
 import 'profile_detail_screen.dart';
 import 'package:untitled5/Model/StreamCategory.dart';
 import 'package:untitled5/Model/model.dart';
 import 'package:untitled5/Model/user.dart';
+
 class StremingAppHomeScreen extends StatefulWidget {
   const StremingAppHomeScreen({super.key});
 
@@ -286,7 +288,7 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
         child: const Icon(Icons.add, color: Colors.white, size: 30),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      bottomNavigationBar: _buildBottomNav(),
+      bottomNavigationBar:  BottomNavBar(parentContext: context,currentIndex: 0,),
     );
   }
 
@@ -627,35 +629,5 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
       ),
     );
   }
-
-  Widget _buildBottomNav() {
-    return Container(
-      height: 80,
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.8),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.home_filled, color: Colors.purpleAccent, size: 28),
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.chat_bubble_outline, color: Colors.white60, size: 26),
-          ),
-          const SizedBox(width: 40),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.favorite_border, color: Colors.white60, size: 26),
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.person_outline, color: Colors.white60, size: 26),
-          ),
-        ],
-      ),
-    );
-  }
+  
 }
