@@ -5,6 +5,7 @@ import 'package:untitled5/FirebaseTestPage.dart';
 import 'package:untitled5/Mystreamlistpasge.dart';
 import 'package:untitled5/Screen/Navbar/chat_bubble_screen.dart';
 import 'package:untitled5/Screen/Navbar/favorite_screen.dart';
+import 'package:untitled5/Screen/prepare_livestream.dart';
 import 'package:untitled5/Screen/streming_app_home_screen.dart';
 import 'package:untitled5/SplashScreen.dart';
 import 'package:untitled5/Screen/Navbar/info_user_screen.dart';
@@ -43,6 +44,7 @@ class MyApp extends StatelessWidget {
         '/info': (context) => InfoUserScreen(),
         '/chat' : (context) => ChatBubbleScreen(),
         '/favor' : (context) => FavoriteScreen(),
+        '/prepare' : (context) => LivePrepareScreen(),
       },
     );
   }

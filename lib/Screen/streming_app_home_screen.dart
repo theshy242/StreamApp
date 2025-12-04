@@ -284,7 +284,9 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.purpleAccent,
-        onPressed: () {},
+        onPressed: () {
+          Navigator.pushNamed(context, '/prepare');
+        },
         child: const Icon(Icons.add, color: Colors.white, size: 30),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
