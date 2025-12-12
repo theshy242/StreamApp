@@ -4,6 +4,7 @@ import 'package:untitled5/Screen/streming_app_home_screen.dart';
 import 'package:untitled5/RegisterScreen.dart';
 import 'Screen/streming_app_home_screen.dart';
 import 'ForgotPassword.dart';
+
 class LoginScreenb extends StatefulWidget {
   const LoginScreenb({Key? key}) : super(key: key);
 
@@ -51,6 +52,7 @@ class _LoginScreenState extends State<LoginScreenb>
       setState(() => _loading = false);
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text("Đăng nhập thành công ✅")));
+
 
       Navigator.pushReplacement(
         context,
@@ -207,7 +209,7 @@ class _LoginScreenState extends State<LoginScreenb>
                       "Đăng nhập",
                       style: TextStyle(
                         fontSize: 16,
-                        color: Colors.pink,
+                        color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

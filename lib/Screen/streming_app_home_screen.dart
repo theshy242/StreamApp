@@ -1,13 +1,17 @@
 import 'dart:ui';
+import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:untitled5/Screen/UserInfor.dart';
 import '../Constants/colors.dart';
 import 'live_stream_screen.dart';
 import 'profile_detail_screen.dart';
 import 'package:untitled5/Model/StreamCategory.dart';
 import 'package:untitled5/Model/model.dart';
 import 'package:untitled5/Model/user.dart';
+import 'package:untitled5/Model/user.dart';
+import 'package:untitled5/Screen/LivePrepareScreen.dart';
 class StremingAppHomeScreen extends StatefulWidget {
   const StremingAppHomeScreen({super.key});
 
@@ -17,6 +21,7 @@ class StremingAppHomeScreen extends StatefulWidget {
 
 class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
   String selectedCategory = "🔥Popular";
+
   List<StreamItem> streamItems = [];
   List<StreamItem> allStreams = [];
   List<StreamCategory> categories = [];
@@ -41,6 +46,7 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
   void initState() {
     super.initState();
     _initializeFirebase();
+
   }
 
   void _initializeFirebase() async {
@@ -282,7 +288,46 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.purpleAccent,
-        onPressed: () {},
+        onPressed: () {
+          // Lấy user hiện tại từ Firebase Auth
+          final fbAuth.User? firebaseUser = fbAuth.FirebaseAuth.instance.currentUser;
+
+          if (firebaseUser == null) {
+            // Nếu chưa đăng nhập, chuyển đến màn hình đăng nhập
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Vui lòng đăng nhập trước")),
+            );
+            return;
+          }
+
+          // Lấy thông tin user từ Realtime Database
+          usersDbRef.child(firebaseUser.uid).get().then((snapshot) {
+            if (snapshot.exists) {
+              final userData = Map<String, dynamic>.from(snapshot.value as Map);
+              final user = User.fromJson(userData);
+
+              // Navigate với user đã lấy
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => LivePrepareScreen(
+                    currentUser: user, // Truyền user đã lấy từ Firebase
+                  ),
+                ),
+              );
+            } else {
+              // Nếu không tìm thấy user trong database
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text("Không tìm thấy thông tin user")),
+              );
+            }
+          }).catchError((error) {
+            print("❌ Error fetching user: $error");
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Lỗi khi tải thông tin user")),
+            );
+          });
+        },
         child: const Icon(Icons.add, color: Colors.white, size: 30),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
@@ -651,11 +696,29 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
             icon: const Icon(Icons.favorite_border, color: Colors.white60, size: 26),
           ),
           IconButton(
-            onPressed: () {},
+            onPressed: () {final fbAuth.User? currentUser = fbAuth.FirebaseAuth.instance.currentUser;
+            if (currentUser != null) {
+              usersDbRef.child(currentUser.uid).get().then((snapshot) {
+                if (snapshot.exists) {
+                  final userData = Map<String, dynamic>.from(snapshot.value as Map);
+                  final user = User.fromJson(userData);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => InfoUserScreen(user: user)),
+                  );
+                }
+              });
+            }
+
+            },
             icon: const Icon(Icons.person_outline, color: Colors.white60, size: 26),
           ),
         ],
       ),
     );
   }
+
+
+
+
 }

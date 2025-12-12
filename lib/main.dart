@@ -9,6 +9,7 @@ import 'HomeScreen.dart';
 
 import 'firebase_options.dart';
 
+
 Future<void> main() async {
   // Bắt buộc để đảm bảo Flutter khởi tạo trước khi gọi Firebase
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +34,7 @@ class MyApp extends StatelessWidget {
       ),
 
       home:  LoginScreenb(),
+
       routes: {
         '/login': (context) => LoginScreenb(), // màn hình login
         '/home': (context) => HomeScreen(),   // nếu cần
@@ -89,4 +91,7 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     );
   }
+
+
 }
+

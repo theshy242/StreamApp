@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'Screen/streming_app_home_screen.dart';
-
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'Model/StreamkeyGenerate.dart';
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({Key? key}) : super(key: key);
 
@@ -25,13 +27,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     setState(() => _loading = true);
+
     try {
+      // Tạo user Firebase Auth
+      UserCredential userCred =
       await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
+      final streamKey = await StreamKeyService.generateStreamKey();
+
+      final user = userCred.user;
+
+      // Nếu tạo user thành công → push dữ liệu lên Realtime DB
+      if (user != null) {
+        DatabaseReference ref = FirebaseDatabase.instance.ref("users/${user.uid}");
+
+        await ref.set({
+          "userId": "$streamKey",
+          "name": "New User",
+          "email": user.email ?? "",
+          "avatar": "https://cdn-icons-png.flaticon.com/512/1144/1144760.png",
+          "serverUrl": "rtmp://192.168.1.249/live/$streamKey",
+          "description": "",
+          "followers": 0,
+          "createdAt": DateTime.now().millisecondsSinceEpoch,
+        });
+      }
 
       setState(() => _loading = false);
+
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text("Đăng ký thành công ✅")));
 
@@ -180,7 +205,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Colors.pink,
+                        color: Colors.white,
                       ),
                     ),
                   ),

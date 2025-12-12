@@ -18,12 +18,13 @@ class User {
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
+    final id = json['userId'] ?? '';
     return User(
       userId: json['userId'] ?? '',
       name: json['name'] ?? '',
       email: json['email'] ?? '',
       avatar: json['avatar'] ?? '',
-      serverUrl: json['serverUrl'] ?? '',
+      serverUrl: json['serverUrl'] ?? "rtmp://192.168.2.117/live/$id",
       description: json['description'] ?? '',
       followers: json['followers'] ?? 0,
     );
