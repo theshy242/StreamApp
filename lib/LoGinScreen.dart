@@ -4,6 +4,7 @@ import 'package:untitled5/Screen/streming_app_home_screen.dart';
 import 'package:untitled5/RegisterScreen.dart';
 import 'Screen/streming_app_home_screen.dart';
 import 'ForgotPassword.dart';
+import 'package:untitled5/Model/user.dart';
 
 class LoginScreenb extends StatefulWidget {
   const LoginScreenb({Key? key}) : super(key: key);
@@ -12,7 +13,8 @@ class LoginScreenb extends StatefulWidget {
   State<LoginScreenb> createState() => _LoginScreenState();
 }
 
-final _emailController = TextEditingController();
+
+  final _emailController = TextEditingController();
 
 class _LoginScreenState extends State<LoginScreenb>
     with SingleTickerProviderStateMixin {
@@ -50,6 +52,7 @@ class _LoginScreenState extends State<LoginScreenb>
       );
 
       setState(() => _loading = false);
+
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text("Đăng nhập thành công ✅")));
 

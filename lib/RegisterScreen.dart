@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'Screen/streming_app_home_screen.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'Model/StreamkeyGenerate.dart';
+
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({Key? key}) : super(key: key);
 
@@ -18,6 +17,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   bool _loading = false;
 
+  // Hàm tạo userId tuần tự: user09, user10, user11... (tiếp theo số 8 hiện tại)
+  Future<String> _generateSequentialUserId() async {
+    try {
+      // Lấy counter hiện tại từ Firebase
+      final counterRef = FirebaseDatabase.instance.ref("counters/user_counter");
+      final counterSnapshot = await counterRef.get();
+
+      int currentCounter = 9; // Bắt đầu từ 9 (vì đã có 8 user)
+
+      if (counterSnapshot.exists) {
+        currentCounter = (counterSnapshot.value as int? ?? 8) + 1;
+      }
+
+      // Tăng counter lên 1
+      await counterRef.set(currentCounter);
+
+      // Format: user09, user10, user11...
+      return "user${currentCounter.toString().padLeft(2, '0')}";
+    } catch (e) {
+      print("Lỗi khi tạo userId: $e");
+      // Fallback: dùng timestamp
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      return "user_${timestamp.toString().substring(9, 13)}";
+    }
+  }
+
   Future<void> _register() async {
     if (_passwordController.text != _confirmController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -29,22 +54,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _loading = true);
 
     try {
-      // Tạo user Firebase Auth
+      // 1. Tạo user Firebase Auth
       UserCredential userCred =
       await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-      final streamKey = await StreamKeyService.generateStreamKey();
 
       final user = userCred.user;
 
-      // Nếu tạo user thành công → push dữ liệu lên Realtime DB
       if (user != null) {
-        DatabaseReference ref = FirebaseDatabase.instance.ref("users/${user.uid}");
+        // 2. Tạo userId tuần tự: user09, user10,...
+        final userId = await _generateSequentialUserId();
 
-        await ref.set({
-          "userId": "$streamKey",
+        // 3. StreamKey = userId (user09, user10,...)
+        final streamKey = userId;
+
+        // 4. Lưu user vào Realtime DB với key là userId đơn giản
+        final userRef = FirebaseDatabase.instance.ref("users/$userId");
+        await userRef.set({
+          "userId": userId,           // user09, user10,...
+          "firebaseUid": user.uid,    // UID thật từ Firebase Auth
           "name": "New User",
           "email": user.email ?? "",
           "avatar": "https://cdn-icons-png.flaticon.com/512/1144/1144760.png",
@@ -52,7 +82,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           "description": "",
           "followers": 0,
           "createdAt": DateTime.now().millisecondsSinceEpoch,
+          "streamKey": streamKey,     // streamKey = userId
         });
+
+        print('✅ Đã tạo user: $userId (Firebase UID: ${user.uid})');
       }
 
       setState(() => _loading = false);

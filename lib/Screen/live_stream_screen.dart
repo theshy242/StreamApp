@@ -74,15 +74,36 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     });
   }
 
-  // === PHẦN XỬ LÝ VIDEO (Giữ nguyên) ===
   void _initializeVideoPlayer() {
     _videoController = VideoPlayerController.network(widget.user.serverUrl)
       ..initialize().then((_) {
+        // ✅ FIXED: Sử dụng tỷ lệ THỰC của video, không ép theo màn hình
+        final videoAspectRatio = _videoController.value.aspectRatio;
+
         _chewieController = ChewieController(
           videoPlayerController: _videoController,
           autoPlay: true,
-          looping: false,
+          looping: true,
+          showControls: true,
+          allowFullScreen: true,
+          // ✅ Sử dụng tỷ lệ khung hình thực của video
+          aspectRatio: videoAspectRatio,
+          showControlsOnInitialize: true,
+          // ✅ Cấu hình placeholder
+          placeholder: Container(
+            color: Colors.grey[900],
+            child: const Center(
+              child: CircularProgressIndicator(color: Colors.purpleAccent),
+            ),
+          ),
+          // ✅ Tự động điều chỉnh
+          autoInitialize: true,
+          allowedScreenSleep: false,
         );
+
+        setState(() {});
+      }).catchError((error) {
+        print('Error loading stream: $error');
         setState(() {});
       });
   }
@@ -311,6 +332,105 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     super.dispose();
   }
 
+  // ✅ PHƯƠNG THỨC MỚI: Hiển thị video với tỷ lệ đúng
+  Widget _buildCorrectedVideoPlayer() {
+    if (_chewieController != null &&
+        _chewieController!.videoPlayerController.value.isInitialized) {
+
+      final videoAspectRatio = _videoController.value.aspectRatio;
+
+      return Center(
+        child: AspectRatio(
+          // ✅ Sử dụng tỷ lệ khung hình THỰC của video
+          aspectRatio: videoAspectRatio,
+          child: Chewie(
+            controller: _chewieController!,
+          ),
+        ),
+      );
+    } else {
+      // Hiển thị placeholder trong khi loading
+      return Image.network(
+        widget.streamItem.image,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey[900],
+            child: const Center(
+              child: Icon(
+                Icons.error_outline,
+                color: Colors.white54,
+                size: 50,
+              ),
+            ),
+          );
+        },
+      );
+    }
+  }
+
+  // ✅ PHƯƠNG THỨC MỚI: Hiển thị video full màn hình không bị biến dạng
+  Widget _buildFullScreenVideo() {
+    if (_chewieController == null ||
+        !_chewieController!.videoPlayerController.value.isInitialized) {
+      return _buildLoadingPlaceholder();
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final videoAspectRatio = _videoController.value.aspectRatio;
+        final containerAspectRatio = constraints.maxWidth / constraints.maxHeight;
+
+        Widget videoPlayer = Chewie(controller: _chewieController!);
+
+        // Nếu tỷ lệ video và container khác nhau, cần căn chỉnh
+        if ((videoAspectRatio - containerAspectRatio).abs() > 0.01) {
+          if (videoAspectRatio > containerAspectRatio) {
+            // Video rộng hơn container => căn theo chiều ngang
+            final heightScale = containerAspectRatio / videoAspectRatio;
+            return Transform.scale(
+              scale: heightScale,
+              alignment: Alignment.center,
+              child: videoPlayer,
+            );
+          } else {
+            // Video cao hơn container => căn theo chiều dọc
+            final widthScale = videoAspectRatio / containerAspectRatio;
+            return Transform.scale(
+              scale: widthScale,
+              alignment: Alignment.center,
+              child: videoPlayer,
+            );
+          }
+        }
+
+        // Tỷ lệ khớp nhau, hiển thị bình thường
+        return videoPlayer;
+      },
+    );
+  }
+
+  Widget _buildLoadingPlaceholder() {
+    return Container(
+      color: Colors.black,
+      child: Stack(
+        children: [
+          Image.network(
+            widget.streamItem.image,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+          ),
+          const Center(
+            child: CircularProgressIndicator(color: Colors.purpleAccent),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     Size size = MediaQuery.of(context).size;
@@ -319,30 +439,10 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-
-          // ========== VIDEO PLAYER (Giữ nguyên phần hiển thị) ==========
+          // ========== VIDEO PLAYER VỚI TỶ LỆ ĐÚNG ==========
+          // ✅ THAY ĐỔI: Sử dụng phương thức mới để hiển thị video
           Positioned.fill(
-            child: _chewieController != null &&
-                _chewieController!.videoPlayerController.value.isInitialized
-                ? Chewie(
-              controller: _chewieController!,
-            )
-                : Image.network(
-              widget.streamItem.image,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  color: Colors.grey[900],
-                  child: const Center(
-                    child: Icon(
-                      Icons.error_outline,
-                      color: Colors.white54,
-                      size: 50,
-                    ),
-                  ),
-                );
-              },
-            ),
+            child: _buildCorrectedVideoPlayer(), // Hoặc _buildFullScreenVideo()
           ),
 
           // Gradient overlay (Giữ nguyên)
@@ -382,7 +482,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
             ),
           ),
 
-          // ========== PHẦN TRÊN: Thông tin streamer (Cập nhật viewer count) ==========
+          // ========== PHẦN TRÊN: Thông tin streamer ==========
           Positioned(
             top: 50,
             left: 70,
@@ -476,7 +576,6 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
 
           // Tiêu đề stream (Giữ nguyên)
           Positioned(
-
             top: 100,
             left: 15,
             right: 15,

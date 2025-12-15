@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:untitled5/FirebaseTestPage.dart';
-import 'package:untitled5/Mystreamlistpasge.dart';
+import 'package:untitled5/Model/user.dart';
 import 'package:untitled5/SplashScreen.dart';
 import 'LoGinScreen.dart';
-import 'HomeScreen.dart';
 
 import 'firebase_options.dart';
 
@@ -18,8 +16,37 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-
+  await updateAllUsersServerUrl();
   runApp(const MyApp());
+}
+
+Future<void> updateAllUsersServerUrl() async {
+  final ref = FirebaseDatabase.instance.ref('users');
+  final snapshot = await ref.get();
+
+  if (!snapshot.exists) {
+    print('❌ Không có user nào');
+    return;
+  }
+
+  final users = snapshot.value as Map<dynamic, dynamic>;
+
+  for (final entry in users.entries) {
+    final userId = entry.key.toString();
+
+    final newServerUrl = "http://172.16.12.164/live/$userId.m3u8";
+
+    await ref.child(userId).update({
+      'serverUrl': newServerUrl,
+    });
+
+    print('✅ $userId → $newServerUrl');
+
+    // tránh spam Firebase
+    await Future.delayed(const Duration(milliseconds: 80));
+  }
+
+  print('🎉 Cập nhật xong ${users.length} users');
 }
 
 class MyApp extends StatelessWidget {
@@ -37,11 +64,12 @@ class MyApp extends StatelessWidget {
 
       routes: {
         '/login': (context) => LoginScreenb(), // màn hình login
-        '/home': (context) => HomeScreen(),   // nếu cần
+         // nếu cần
       },
     );
   }
 }
+
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});

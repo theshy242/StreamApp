@@ -300,31 +300,74 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
             return;
           }
 
-          // Lấy thông tin user từ Realtime Database
-          usersDbRef.child(firebaseUser.uid).get().then((snapshot) {
-            if (snapshot.exists) {
-              final userData = Map<String, dynamic>.from(snapshot.value as Map);
-              final user = User.fromJson(userData);
+          print("🔍 Tìm user cho Firebase UID: ${firebaseUser.uid}");
 
-              // Navigate với user đã lấy
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => LivePrepareScreen(
-                    currentUser: user, // Truyền user đã lấy từ Firebase
+          // TÌM USER TRONG DATABASE
+          usersDbRef.get().then((snapshot) {
+            if (snapshot.exists) {
+              final usersMap = snapshot.value as Map<dynamic, dynamic>;
+              User? foundUser;
+              String? foundUserId;
+
+              // Duyệt qua tất cả users để tìm user có firebaseUid trùng khớp
+              usersMap.forEach((key, value) {
+                try {
+                  final userData = Map<String, dynamic>.from(value);
+
+                  // Kiểm tra nếu user có field firebaseUid
+                  if (userData.containsKey('firebaseUid')) {
+                    final storedFirebaseUid = userData['firebaseUid'] as String?;
+
+                    if (storedFirebaseUid == firebaseUser.uid) {
+                      foundUser = User.fromJson(userData);
+                      foundUserId = key.toString();
+                      print("✅ Tìm thấy user: $foundUserId (Firebase UID: $storedFirebaseUid)");
+                    }
+                  }
+                  // HOẶC kiểm tra nếu userId là email (cũ)
+                  else if (userData['email'] == firebaseUser.email) {
+                    foundUser = User.fromJson(userData);
+                    foundUserId = key.toString();
+                    print("✅ Tìm thấy user qua email: $foundUserId");
+                  }
+                } catch (e) {
+                  print("❌ Lỗi khi parse user $key: $e");
+                }
+              });
+
+              if (foundUser != null) {
+                // Navigate với user đã tìm thấy
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => LivePrepareScreen(
+                      currentUser: foundUser!,
+                    ),
                   ),
-                ),
-              );
+                );
+              } else {
+                // Nếu không tìm thấy user trong database
+                print("❌ Không tìm thấy user cho Firebase UID: ${firebaseUser.uid}");
+                print("📧 Email hiện tại: ${firebaseUser.email}");
+                print("📊 Tổng số user trong DB: ${usersMap.length}");
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("Không tìm thấy thông tin user. Vui lòng đăng ký lại."),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
             } else {
-              // Nếu không tìm thấy user trong database
+              // Nếu không có users trong database
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text("Không tìm thấy thông tin user")),
+                SnackBar(content: Text("Không có user nào trong database")),
               );
             }
           }).catchError((error) {
-            print("❌ Error fetching user: $error");
+            print("❌ Error fetching users: $error");
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Lỗi khi tải thông tin user")),
+              SnackBar(content: Text("Lỗi khi tải thông tin user: $error")),
             );
           });
         },
@@ -696,20 +739,114 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
             icon: const Icon(Icons.favorite_border, color: Colors.white60, size: 26),
           ),
           IconButton(
-            onPressed: () {final fbAuth.User? currentUser = fbAuth.FirebaseAuth.instance.currentUser;
-            if (currentUser != null) {
-              usersDbRef.child(currentUser.uid).get().then((snapshot) {
-                if (snapshot.exists) {
-                  final userData = Map<String, dynamic>.from(snapshot.value as Map);
-                  final user = User.fromJson(userData);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => InfoUserScreen(user: user)),
-                  );
-                }
-              });
-            }
+            onPressed: () async {
+              print("🔄 Đang tải profile...");
 
+              final currentUser = fbAuth.FirebaseAuth.instance.currentUser;
+              if (currentUser == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Vui lòng đăng nhập")),
+                );
+                return;
+              }
+
+              print("🔍 Tìm user: ${currentUser.email} (${currentUser.uid})");
+
+              try {
+                // PHƯƠNG PHÁP 1: Tìm trong user_mapping trước
+                final mappingRef = FirebaseDatabase.instanceFor(
+                  app: Firebase.app(),
+                  databaseURL: "https://livestream-app-32b54-default-rtdb.firebaseio.com/",
+                ).ref().child('user_mapping');
+
+                final mappingSnapshot = await mappingRef.child(currentUser.uid).get();
+
+                if (mappingSnapshot.exists) {
+                  print("✅ Tìm thấy trong user_mapping");
+                  final mappingData = Map<String, dynamic>.from(mappingSnapshot.value as Map);
+                  final simpleUserId = mappingData['simpleUserId'] as String;
+                  print("Simple User ID: $simpleUserId");
+
+                  // Lấy user từ users node
+                  final userSnapshot = await usersDbRef.child(simpleUserId).get();
+                  if (userSnapshot.exists) {
+                    final userData = Map<String, dynamic>.from(userSnapshot.value as Map);
+                    final user = User.fromJson(userData);
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => InfoUserScreen(user: user),
+                      ),
+                    );
+                    return;
+                  }
+                }
+
+                // PHƯƠNG PHÁP 2: Duyệt qua tất cả users
+                print("🔄 Không tìm thấy trong mapping, duyệt qua users...");
+                final usersSnapshot = await usersDbRef.get();
+
+                if (usersSnapshot.exists) {
+                  final allUsers = usersSnapshot.value as Map<dynamic, dynamic>;
+
+                  for (var entry in allUsers.entries) {
+                    final key = entry.key.toString();
+                    final value = entry.value;
+
+                    // Bỏ qua các node đặc biệt
+                    if (key == "chatHistory" || key == "system") continue;
+
+                    try {
+                      final userData = Map<String, dynamic>.from(value);
+
+                      // Kiểm tra firebaseUid
+                      if (userData['firebaseUid'] == currentUser.uid) {
+                        print("✅ Tìm thấy bằng firebaseUid: $key");
+                        final user = User.fromJson(userData);
+
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => InfoUserScreen(user: user),
+                          ),
+                        );
+                        return;
+                      }
+
+                      // Kiểm tra email
+                      if (userData['email'] == currentUser.email) {
+                        print("✅ Tìm thấy bằng email: $key");
+                        final user = User.fromJson(userData);
+
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => InfoUserScreen(user: user),
+                          ),
+                        );
+                        return;
+                      }
+                    } catch (e) {
+                      print("⚠️ Lỗi parse user $key: $e");
+                    }
+                  }
+                }
+
+                print("❌ Không tìm thấy user nào");
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Không tìm thấy thông tin user"),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+
+              } catch (e) {
+                print("❌ Lỗi: $e");
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("Lỗi: $e")),
+                );
+              }
             },
             icon: const Icon(Icons.person_outline, color: Colors.white60, size: 26),
           ),
@@ -717,7 +854,6 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
       ),
     );
   }
-
 
 
 
