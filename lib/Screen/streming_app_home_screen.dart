@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:untitled5/Screen/UserInfor.dart';
+import '../AI_Chat/chat_screen.dart';
 import '../Constants/colors.dart';
 import 'live_stream_screen.dart';
 import 'profile_detail_screen.dart';
@@ -273,18 +274,45 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 20),
-            _buildCategoryWidget(),
-            const SizedBox(height: 20),
-            Expanded(
-              child: _buildContent(size),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              children: [
+                _buildHeader(),
+                const SizedBox(height: 20),
+                _buildCategoryWidget(),
+                const SizedBox(height: 20),
+                Expanded(
+                  child: _buildContent(size),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+
+          // 🤖 CHATBOX AI BUTTON
+          Positioned(
+            bottom: 100, // cao hơn bottom nav
+            right: 20,
+            child: FloatingActionButton(
+              heroTag: "ai_chat",
+              backgroundColor: Colors.deepPurple,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ChatScreen(), // 👈 màn hình AI
+                  ),
+                );
+              },
+              child: const Icon(
+                Icons.smart_toy_outlined,
+                color: Colors.white,
+                size: 26,
+              ),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.purpleAccent,
