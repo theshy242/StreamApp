@@ -39,7 +39,7 @@ class StreamItem {
       url: json['url'] ?? '',
       isLiveNow: json['isLiveNow'] ?? false,
       colorHex: json['colorHex'] ?? '',
-      image: json['image'] ?? '',
+      image: (json['image'] ?? json['imageUrl'])?.toString() ?? '',
       streamTitle: json['streamTitle'] ?? '',
       viewer: json['viewer'] ?? '',
       followers: json['followers'] ?? '',

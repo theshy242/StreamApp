@@ -40,8 +40,8 @@ class _LivePrepareScreenState extends State<LivePrepareScreen> {
   double _chatPanelHeight = 300;
 
   final List<String> categories = [
-    "Gaming", "Entertainment", "Education",
-    "Music", "Lifestyle", "IRL",
+    "Popular", "Gaming", "Sports",
+    "Music",
   ];
 
   @override

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:flutter/material.dart';
@@ -11,8 +12,8 @@ import 'profile_detail_screen.dart';
 import 'package:untitled5/Model/StreamCategory.dart';
 import 'package:untitled5/Model/model.dart';
 import 'package:untitled5/Model/user.dart';
-import 'package:untitled5/Model/user.dart';
 import 'package:untitled5/Screen/LivePrepareScreen.dart';
+
 class StremingAppHomeScreen extends StatefulWidget {
   const StremingAppHomeScreen({super.key});
 
@@ -21,60 +22,80 @@ class StremingAppHomeScreen extends StatefulWidget {
 }
 
 class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
-  String selectedCategory = "🔥Popular";
+  String selectedCategory = "Popular";
 
   List<StreamItem> streamItems = [];
   List<StreamItem> allStreams = [];
   List<StreamCategory> categories = [];
   bool isLoading = true;
+  bool isInitializing = true;
 
-  final DatabaseReference streamsDbRef = FirebaseDatabase.instanceFor(
-    app: Firebase.app(),
-    databaseURL: "https://livestream-app-32b54-default-rtdb.firebaseio.com/",
-  ).ref().child('streamItems');
+  // Stream subscriptions để tránh memory leak
+  StreamSubscription? _streamsSubscription;
+  StreamSubscription? _categoriesSubscription;
 
-  final DatabaseReference categoriesDbRef = FirebaseDatabase.instanceFor(
-    app: Firebase.app(),
-    databaseURL: "https://livestream-app-32b54-default-rtdb.firebaseio.com/",
-  ).ref().child('categories');
-
-  final DatabaseReference usersDbRef = FirebaseDatabase.instanceFor(
-    app: Firebase.app(),
-    databaseURL: "https://livestream-app-32b54-default-rtdb.firebaseio.com/",
-  ).ref().child('users');
+  // Sử dụng single database instance
+  static FirebaseDatabase? _database;
+  DatabaseReference get streamsDbRef => _database!.ref().child('streamItems');
+  DatabaseReference get categoriesDbRef => _database!.ref().child('categories');
+  DatabaseReference get usersDbRef => _database!.ref().child('users');
 
   @override
   void initState() {
     super.initState();
-    _initializeFirebase();
-
+    _initializeApp();
   }
 
-  void _initializeFirebase() async {
-    print('🟡 Initializing Firebase...');
-
+  Future<void> _initializeApp() async {
     try {
-      await Firebase.initializeApp();
-      print('✅ Firebase initialized');
+      print('🟡 Initializing App...');
+
+      // Initialize Firebase nếu chưa có
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+        print('✅ Firebase initialized');
+      }
+
+      // Tạo database instance một lần
+      _database ??= FirebaseDatabase.instanceFor(
+        app: Firebase.app(),
+        databaseURL: "https://livestream-app-32b54-default-rtdb.firebaseio.com/",
+      );
+
+      // Tải dữ liệu mặc định ngay lập tức để có UI nhanh
+      _loadDefaultCategories();
+
+      // Thiết lập listeners
       _setupFirebaseListeners();
+
+      setState(() {
+        isInitializing = false;
+      });
+
     } catch (e) {
-      print('❌ Firebase init error: $e');
+      print('❌ App initialization error: $e');
       _loadMockData();
+      setState(() {
+        isInitializing = false;
+      });
     }
   }
 
   void _setupFirebaseListeners() {
     print('🎯 Setting up Firebase listeners...');
 
-    // Lắng nghe dữ liệu streams
-    streamsDbRef.onValue.listen((DatabaseEvent event) {
+    // Hủy subscriptions cũ nếu có
+    _streamsSubscription?.cancel();
+    _categoriesSubscription?.cancel();
+
+    // Lắng nghe dữ liệu streams với debounce
+    _streamsSubscription = streamsDbRef.onValue.listen((DatabaseEvent event) {
       print('🔵 Streams data received');
 
       final data = event.snapshot.value;
-      print('🔥 Streams data type: ${data.runtimeType}');
 
       if (data == null) {
-        print('❌ No streams data in Firebase');
+        print('⚠️ No streams data in Firebase, using mock data');
         _loadMockData();
         return;
       }
@@ -86,95 +107,95 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
         final List<StreamItem> tempList = [];
         dataMap.forEach((key, value) {
           try {
-            print('🔄 Processing stream key: $key');
             final itemData = Map<String, dynamic>.from(value);
             final streamItem = StreamItem.fromJson(itemData);
             tempList.add(streamItem);
-            print('✅ Added stream: ${streamItem.name}');
           } catch (e) {
-            print('❌ Error parsing stream $key: $e');
+            print('⚠️ Error parsing stream $key: $e');
           }
         });
 
-        setState(() {
-          allStreams = tempList;
-          _filterStreams();
-          isLoading = false;
-        });
-
-        print('🎉 SUCCESS! Loaded ${allStreams.length} streams from Firebase');
+        if (mounted) {
+          setState(() {
+            allStreams = tempList;
+            _filterStreams();
+            isLoading = false;
+          });
+          print('🎉 Loaded ${allStreams.length} streams');
+        }
 
       } catch (e) {
         print('❌ Streams data processing error: $e');
-        _loadMockData();
+        if (mounted) {
+          _loadMockData();
+        }
       }
     }, onError: (error) {
       print('❌ Streams listener error: $error');
-      _loadMockData();
+      if (mounted) {
+        _loadMockData();
+      }
     });
 
     // Lắng nghe dữ liệu categories
-    categoriesDbRef.onValue.listen((DatabaseEvent event) {
+    _categoriesSubscription = categoriesDbRef.onValue.listen((DatabaseEvent event) {
       print('🟣 Categories data received');
 
       final data = event.snapshot.value;
 
       if (data == null) {
-        print('❌ No categories data in Firebase');
-        _loadDefaultCategories();
+        print('⚠️ No categories data in Firebase, using default');
         return;
       }
 
       try {
         final dataMap = data as Map<dynamic, dynamic>;
-        print('✅ Categories data map length: ${dataMap.length}');
-
         final List<StreamCategory> tempCategories = [];
+
         dataMap.forEach((key, value) {
           try {
-            print('🔄 Processing category key: $key');
             final categoryData = Map<String, dynamic>.from(value);
             final category = StreamCategory.fromJson(categoryData);
             tempCategories.add(category);
-            print('✅ Added category: ${category.title}');
           } catch (e) {
-            print('❌ Error parsing category $key: $e');
+            print('⚠️ Error parsing category $key: $e');
           }
         });
 
-        setState(() {
-          categories = tempCategories;
-          // Nếu có categories từ Firebase, chọn category đầu tiên
-          if (categories.isNotEmpty) {
-            selectedCategory = categories.first.title;
-            _filterStreams();
-          }
-        });
-
-        print('🎉 SUCCESS! Loaded ${categories.length} categories from Firebase');
+        if (mounted) {
+          setState(() {
+            categories = tempCategories;
+            if (categories.isNotEmpty) {
+              selectedCategory = categories.first.title;
+              _filterStreams();
+            }
+          });
+          print('✅ Loaded ${categories.length} categories');
+        }
 
       } catch (e) {
         print('❌ Categories data processing error: $e');
-        _loadDefaultCategories();
       }
     }, onError: (error) {
       print('❌ Categories listener error: $error');
-      _loadDefaultCategories();
     });
   }
 
   void _loadDefaultCategories() {
-    print('🔄 Loading default categories...');
+    if (categories.isNotEmpty) return;
+
     final defaultCategories = [
-      StreamCategory(title: "🔥Popular"),
-      StreamCategory(title: "🎮Gaming"),
-      StreamCategory(title: "⚽️Sports"),
-      StreamCategory(title: "🎧Music"),
+      StreamCategory(title: "Popular"),
+      StreamCategory(title: "Gaming"),
+      StreamCategory(title: "Sports"),
+      StreamCategory(title: "Music"),
     ];
 
-    setState(() {
-      categories = defaultCategories;
-    });
+    if (mounted) {
+      setState(() {
+        categories = defaultCategories;
+      });
+    }
   }
 
   void _loadMockData() {
@@ -182,7 +203,7 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
     final mockItems = [
       StreamItem(
         name: 'Randy Rangers',
-        category: '🔥Popular',
+        category: 'Popular',
         url: 'https://symbl-cdn.com/i/webp/ef/717de6be0d2c9eb4d9d91521542da2.webp',
         isLiveNow: true,
         colorHex: '#2196F3',
@@ -194,11 +215,11 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
         post: '950',
         following: '879',
         description: 'I am a gamer, I often do live streaming when I play games',
-        userId: 'user_01', // ⭐ trỏ tới user
+        userId: 'user_01',
       ),
       StreamItem(
         name: 'Aura Kirana',
-        category: '🎮Gaming',
+        category: 'Gaming',
         url: 'https://symbl-cdn.com/i/webp/9c/4628a5e254c186333877e3449d1caf.webp',
         isLiveNow: true,
         colorHex: '#448AFF',
@@ -210,20 +231,21 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
         post: '50',
         following: '79',
         description: 'I am a gamer, I often do live streaming when I play games',
-        userId: 'user_02', // ⭐ trỏ tới user
+        userId: 'user_02',
       ),
     ];
 
-    setState(() {
-      allStreams = mockItems;
-      _filterStreams();
-      isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        allStreams = mockItems;
+        _filterStreams();
+        isLoading = false;
+      });
+    }
   }
 
   void _filterStreams() {
-    if (selectedCategory == "🔥Popular") {
-      // Hiển thị tất cả stream hoặc stream phổ biến
+    if (selectedCategory == "Popular") {
       streamItems = allStreams.where((item) => item.isLiveNow).toList();
       if (streamItems.isEmpty) {
         streamItems = allStreams;
@@ -234,25 +256,107 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
           .toList();
     }
 
-    // Nếu không có item trong category, hiển thị tất cả
     if (streamItems.isEmpty && allStreams.isNotEmpty) {
       streamItems = allStreams;
     }
   }
 
   void selectCategory(String category) {
-    setState(() {
-      selectedCategory = category;
-      _filterStreams();
-    });
+    if (selectedCategory != category && mounted) {
+      setState(() {
+        selectedCategory = category;
+        _filterStreams();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    // Hủy tất cả subscriptions để tránh memory leak
+    _streamsSubscription?.cancel();
+    _categoriesSubscription?.cancel();
+    super.dispose();
+  }
+
+  // Helper function để tìm user
+  Future<User?> _findCurrentUser() async {
+    final fbAuth.User? firebaseUser = fbAuth.FirebaseAuth.instance.currentUser;
+    if (firebaseUser == null) return null;
+
+    try {
+      // Phương pháp 1: Tìm trong user_mapping
+      final mappingRef = _database!.ref().child('user_mapping');
+      final mappingSnapshot = await mappingRef.child(firebaseUser.uid).get();
+
+      if (mappingSnapshot.exists) {
+        final mappingData = Map<String, dynamic>.from(mappingSnapshot.value as Map);
+        final simpleUserId = mappingData['simpleUserId'] as String;
+
+        final userSnapshot = await usersDbRef.child(simpleUserId).get();
+        if (userSnapshot.exists) {
+          final userData = Map<String, dynamic>.from(userSnapshot.value as Map);
+          return User.fromJson(userData);
+        }
+      }
+
+      // Phương pháp 2: Duyệt qua tất cả users
+      final usersSnapshot = await usersDbRef.get();
+      if (usersSnapshot.exists) {
+        final allUsers = usersSnapshot.value as Map<dynamic, dynamic>;
+
+        for (var entry in allUsers.entries) {
+          final key = entry.key.toString();
+          final value = entry.value;
+
+          if (key == "chatHistory" || key == "system") continue;
+
+          try {
+            final userData = Map<String, dynamic>.from(value);
+
+            if (userData['firebaseUid'] == firebaseUser.uid) {
+              return User.fromJson(userData);
+            }
+
+            if (userData['email'] == firebaseUser.email) {
+              return User.fromJson(userData);
+            }
+          } catch (e) {
+            print("⚠️ Lỗi parse user $key: $e");
+          }
+        }
+      }
+    } catch (e) {
+      print('❌ Error finding user: $e');
+    }
+
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    Size size = MediaQuery.of(context).size;
+    if (isInitializing) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.purpleAccent),
+              ),
+              SizedBox(height: 20),
+              Text(
+                "Initializing app...",
+                style: TextStyle(color: Colors.white70, fontSize: 16),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     if (isLoading) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: Colors.black,
         body: Center(
           child: Column(
@@ -284,7 +388,7 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
                 _buildCategoryWidget(),
                 const SizedBox(height: 20),
                 Expanded(
-                  child: _buildContent(size),
+                  child: _buildContent(),
                 ),
               ],
             ),
@@ -292,7 +396,7 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
 
           // 🤖 CHATBOX AI BUTTON
           Positioned(
-            bottom: 100, // cao hơn bottom nav
+            bottom: 100,
             right: 20,
             child: FloatingActionButton(
               heroTag: "ai_chat",
@@ -301,7 +405,7 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const ChatScreen(), // 👈 màn hình AI
+                    builder: (_) => const ChatScreen(),
                   ),
                 );
               },
@@ -316,88 +420,27 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.purpleAccent,
-        onPressed: () {
-          // Lấy user hiện tại từ Firebase Auth
-          final fbAuth.User? firebaseUser = fbAuth.FirebaseAuth.instance.currentUser;
+        onPressed: () async {
+          final user = await _findCurrentUser();
 
-          if (firebaseUser == null) {
-            // Nếu chưa đăng nhập, chuyển đến màn hình đăng nhập
+          if (user == null) {
+            if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Vui lòng đăng nhập trước")),
+              const SnackBar(
+                content: Text("Vui lòng đăng nhập trước"),
+                backgroundColor: Colors.orange,
+              ),
             );
             return;
           }
 
-          print("🔍 Tìm user cho Firebase UID: ${firebaseUser.uid}");
-
-          // TÌM USER TRONG DATABASE
-          usersDbRef.get().then((snapshot) {
-            if (snapshot.exists) {
-              final usersMap = snapshot.value as Map<dynamic, dynamic>;
-              User? foundUser;
-              String? foundUserId;
-
-              // Duyệt qua tất cả users để tìm user có firebaseUid trùng khớp
-              usersMap.forEach((key, value) {
-                try {
-                  final userData = Map<String, dynamic>.from(value);
-
-                  // Kiểm tra nếu user có field firebaseUid
-                  if (userData.containsKey('firebaseUid')) {
-                    final storedFirebaseUid = userData['firebaseUid'] as String?;
-
-                    if (storedFirebaseUid == firebaseUser.uid) {
-                      foundUser = User.fromJson(userData);
-                      foundUserId = key.toString();
-                      print("✅ Tìm thấy user: $foundUserId (Firebase UID: $storedFirebaseUid)");
-                    }
-                  }
-                  // HOẶC kiểm tra nếu userId là email (cũ)
-                  else if (userData['email'] == firebaseUser.email) {
-                    foundUser = User.fromJson(userData);
-                    foundUserId = key.toString();
-                    print("✅ Tìm thấy user qua email: $foundUserId");
-                  }
-                } catch (e) {
-                  print("❌ Lỗi khi parse user $key: $e");
-                }
-              });
-
-              if (foundUser != null) {
-                // Navigate với user đã tìm thấy
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => LivePrepareScreen(
-                      currentUser: foundUser!,
-                    ),
-                  ),
-                );
-              } else {
-                // Nếu không tìm thấy user trong database
-                print("❌ Không tìm thấy user cho Firebase UID: ${firebaseUser.uid}");
-                print("📧 Email hiện tại: ${firebaseUser.email}");
-                print("📊 Tổng số user trong DB: ${usersMap.length}");
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text("Không tìm thấy thông tin user. Vui lòng đăng ký lại."),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-              }
-            } else {
-              // Nếu không có users trong database
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text("Không có user nào trong database")),
-              );
-            }
-          }).catchError((error) {
-            print("❌ Error fetching users: $error");
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Lỗi khi tải thông tin user: $error")),
-            );
-          });
+          if (!mounted) return;
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => LivePrepareScreen(currentUser: user),
+            ),
+          );
         },
         child: const Icon(Icons.add, color: Colors.white, size: 30),
       ),
@@ -438,8 +481,18 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
   }
 
   Widget _buildCategoryWidget() {
-    // Sử dụng categories từ Firebase hoặc default
     final categoryTitles = categories.map((cat) => cat.title).toList();
+
+    if (categoryTitles.isEmpty) {
+      return Container(
+        height: 45,
+        alignment: Alignment.center,
+        child: const Text(
+          "No categories",
+          style: TextStyle(color: Colors.white54),
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 15),
@@ -479,20 +532,20 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
     );
   }
 
-  Widget _buildContent(Size size) {
+  Widget _buildContent() {
     return Column(
       children: [
-        _buildProfileList(size),
+        _buildProfileList(),
         const SizedBox(height: 20),
-        Expanded(child: _buildStreamGrid(size)),
+        Expanded(child: _buildStreamGrid()),
       ],
     );
   }
 
-  Widget _buildProfileList(Size size) {
+  Widget _buildProfileList() {
     if (streamItems.isEmpty) {
       return SizedBox(
-        height: size.height * 0.16,
+        height: 100,
         child: const Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -508,8 +561,9 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
         ),
       );
     }
+
     return SizedBox(
-      height: size.height * 0.16,
+      height: 100,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 15),
@@ -594,7 +648,7 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
     );
   }
 
-  Widget _buildStreamGrid(Size size) {
+  Widget _buildStreamGrid() {
     if (streamItems.isEmpty) {
       return const Center(
         child: Column(
@@ -610,6 +664,7 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
         ),
       );
     }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 15),
       child: GridView.builder(
@@ -623,121 +678,173 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
         itemBuilder: (context, index) {
           final item = streamItems[index];
           return GestureDetector(
-            onTap: () {
-              usersDbRef.child(item.userId).get().then((snapshot) {
-                if (snapshot.exists) {
-                  final userData = Map<String, dynamic>.from(snapshot.value as Map);
+            onTap: () async {
+              try {
+                final userSnapshot = await usersDbRef.child(item.userId).get();
+                if (userSnapshot.exists) {
+                  final userData = Map<String, dynamic>.from(userSnapshot.value as Map);
                   final user = User.fromJson(userData);
 
+                  if (!mounted) return;
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => LiveStreamScreen(
                         streamItem: item,
-                        user: user, // truyền user
+                        user: user,
                       ),
                     ),
                   );
                 } else {
-                  print("❌ User not found for userId: ${item.userId}");
-                }
-              });
-
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Image.network(
-                        item.image,
-                        width: double.infinity,
-                        height: size.height * 0.22,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            width: double.infinity,
-                            height: size.height * 0.22,
-                            color: Colors.grey[800],
-                            child: const Icon(
-                              Icons.error_outline,
-                              color: Colors.white54,
-                              size: 40,
-                            ),
-                          );
-                        },
-                      ),
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("User not found"),
+                      backgroundColor: Colors.orange,
                     ),
-                    if (item.isLiveNow)
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text(
-                            "LIVE",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                  );
+                }
+              } catch (e) {
+                print('❌ Error loading user: $e');
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("Error: $e")),
+                );
+              }
+            },
+            child: Card(
+              elevation: 6,
+              shadowColor: Colors.purpleAccent.withOpacity(0.3),
+              color: const Color(0xFF1C1C1E),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(18),
                         ),
-                      ),
-                    Positioned(
-                      bottom: 8,
-                      left: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
+                        child: Stack(
                           children: [
-                            const Icon(Icons.remove_red_eye, color: Colors.white, size: 12),
-                            const SizedBox(width: 4),
-                            Text(
-                              item.viewer,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
+                            Image.network(
+                              item.coverImage.isNotEmpty
+                                  ? item.coverImage
+                                  : item.image,
+                              width: double.infinity,
+                              height: 160,
+                              fit: BoxFit.cover,
+                            ),
+
+                            // 🌈 Gradient làm ảnh sáng & nổi chữ
+                            Container(
+                              height: 160,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.black.withOpacity(0.1),
+                                    Colors.black.withOpacity(0.45),
+                                  ],
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
+
+                      // 🔴 LIVE badge sáng hơn
+                      if (item.isLiveNow)
+                        Positioned(
+                          top: 10,
+                          left: 10,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Colors.redAccent, Colors.red],
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Text(
+                              "LIVE",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // 👁 Viewer badge glass style
+                      Positioned(
+                        bottom: 10,
+                        left: 10,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              color: Colors.black.withOpacity(0.35),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.remove_red_eye,
+                                      color: Colors.white, size: 12),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    item.viewer,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // 📄 Text content
+                  Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.streamTitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          item.name,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  item.streamTitle,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  item.name,
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
+
           );
         },
       ),
@@ -768,113 +875,26 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
           ),
           IconButton(
             onPressed: () async {
-              print("🔄 Đang tải profile...");
+              final user = await _findCurrentUser();
 
-              final currentUser = fbAuth.FirebaseAuth.instance.currentUser;
-              if (currentUser == null) {
+              if (user == null) {
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Vui lòng đăng nhập")),
+                  const SnackBar(
+                    content: Text("Vui lòng đăng nhập"),
+                    backgroundColor: Colors.orange,
+                  ),
                 );
                 return;
               }
 
-              print("🔍 Tìm user: ${currentUser.email} (${currentUser.uid})");
-
-              try {
-                // PHƯƠNG PHÁP 1: Tìm trong user_mapping trước
-                final mappingRef = FirebaseDatabase.instanceFor(
-                  app: Firebase.app(),
-                  databaseURL: "https://livestream-app-32b54-default-rtdb.firebaseio.com/",
-                ).ref().child('user_mapping');
-
-                final mappingSnapshot = await mappingRef.child(currentUser.uid).get();
-
-                if (mappingSnapshot.exists) {
-                  print("✅ Tìm thấy trong user_mapping");
-                  final mappingData = Map<String, dynamic>.from(mappingSnapshot.value as Map);
-                  final simpleUserId = mappingData['simpleUserId'] as String;
-                  print("Simple User ID: $simpleUserId");
-
-                  // Lấy user từ users node
-                  final userSnapshot = await usersDbRef.child(simpleUserId).get();
-                  if (userSnapshot.exists) {
-                    final userData = Map<String, dynamic>.from(userSnapshot.value as Map);
-                    final user = User.fromJson(userData);
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => InfoUserScreen(user: user),
-                      ),
-                    );
-                    return;
-                  }
-                }
-
-                // PHƯƠNG PHÁP 2: Duyệt qua tất cả users
-                print("🔄 Không tìm thấy trong mapping, duyệt qua users...");
-                final usersSnapshot = await usersDbRef.get();
-
-                if (usersSnapshot.exists) {
-                  final allUsers = usersSnapshot.value as Map<dynamic, dynamic>;
-
-                  for (var entry in allUsers.entries) {
-                    final key = entry.key.toString();
-                    final value = entry.value;
-
-                    // Bỏ qua các node đặc biệt
-                    if (key == "chatHistory" || key == "system") continue;
-
-                    try {
-                      final userData = Map<String, dynamic>.from(value);
-
-                      // Kiểm tra firebaseUid
-                      if (userData['firebaseUid'] == currentUser.uid) {
-                        print("✅ Tìm thấy bằng firebaseUid: $key");
-                        final user = User.fromJson(userData);
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => InfoUserScreen(user: user),
-                          ),
-                        );
-                        return;
-                      }
-
-                      // Kiểm tra email
-                      if (userData['email'] == currentUser.email) {
-                        print("✅ Tìm thấy bằng email: $key");
-                        final user = User.fromJson(userData);
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => InfoUserScreen(user: user),
-                          ),
-                        );
-                        return;
-                      }
-                    } catch (e) {
-                      print("⚠️ Lỗi parse user $key: $e");
-                    }
-                  }
-                }
-
-                print("❌ Không tìm thấy user nào");
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Không tìm thấy thông tin user"),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-
-              } catch (e) {
-                print("❌ Lỗi: $e");
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Lỗi: $e")),
-                );
-              }
+              if (!mounted) return;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => InfoUserScreen(user: user),
+                ),
+              );
             },
             icon: const Icon(Icons.person_outline, color: Colors.white60, size: 26),
           ),
@@ -882,7 +902,4 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
       ),
     );
   }
-
-
-
 }
