@@ -396,7 +396,7 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
 
           // 🤖 CHATBOX AI BUTTON
           Positioned(
-            bottom: 100,
+            bottom: 0,
             right: 20,
             child: FloatingActionButton(
               heroTag: "ai_chat",
@@ -418,33 +418,6 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.purpleAccent,
-        onPressed: () async {
-          final user = await _findCurrentUser();
-
-          if (user == null) {
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Vui lòng đăng nhập trước"),
-                backgroundColor: Colors.orange,
-              ),
-            );
-            return;
-          }
-
-          if (!mounted) return;
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => LivePrepareScreen(currentUser: user),
-            ),
-          );
-        },
-        child: const Icon(Icons.add, color: Colors.white, size: 30),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       bottomNavigationBar: _buildBottomNav(),
     );
   }
@@ -854,49 +827,95 @@ class _StremingAppHomeScreenState extends State<StremingAppHomeScreen> {
   Widget _buildBottomNav() {
     return Container(
       height: 80,
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.8),
-      ),
+      color: Colors.black.withOpacity(0.8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.home_filled, color: Colors.purpleAccent, size: 28),
+          // HOME
+          Expanded(
+            child: IconButton(
+              onPressed: () {},
+              icon: const Icon(Icons.home_filled,
+                  color: Colors.purpleAccent, size: 28),
+            ),
           ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.chat_bubble_outline, color: Colors.white60, size: 26),
-          ),
-          const SizedBox(width: 40),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.favorite_border, color: Colors.white60, size: 26),
-          ),
-          IconButton(
-            onPressed: () async {
-              final user = await _findCurrentUser();
 
-              if (user == null) {
+          // CHAT
+          Expanded(
+            child: IconButton(
+              onPressed: () {},
+              icon: const Icon(Icons.chat_bubble_outline,
+                  color: Colors.white60, size: 26),
+            ),
+          ),
+
+          // 🔴 LIVE — NẰM CHUNG HÀNG
+          Expanded(
+            child: GestureDetector(
+              onTap: () async {
+                final user = await _findCurrentUser();
+
+                if (user == null) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Vui lòng đăng nhập trước"),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Vui lòng đăng nhập"),
-                    backgroundColor: Colors.orange,
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LivePrepareScreen(currentUser: user),
                   ),
                 );
-                return;
-              }
-
-              if (!mounted) return;
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => InfoUserScreen(user: user),
+              },
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Colors.pink, Colors.red],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-              );
-            },
-            icon: const Icon(Icons.person_outline, color: Colors.white60, size: 26),
+                child: const Icon(
+                  Icons.wifi_tethering,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+            ),
+          ),
+
+          // FAVORITE
+          Expanded(
+            child: IconButton(
+              onPressed: () {},
+              icon: const Icon(Icons.favorite_border,
+                  color: Colors.white60, size: 26),
+            ),
+          ),
+
+          // PROFILE
+          Expanded(
+            child: IconButton(
+              onPressed: () async {
+                final user = await _findCurrentUser();
+                if (user == null) return;
+
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => InfoUserScreen(user: user),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.person_outline,
+                  color: Colors.white60, size: 26),
+            ),
           ),
         ],
       ),

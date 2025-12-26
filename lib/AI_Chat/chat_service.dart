@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
 class ChatService {
-  static const String apiKey = "AIzaSyBWpQs6zhN4je-XCEFhQX6EvxKlW66PUug";
+  static final String apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
 
-  static const String url =
+  static final String url =
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey";
 
   final DatabaseReference _streamRef = FirebaseDatabase.instance.ref("streamItems");

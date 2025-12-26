@@ -6,12 +6,14 @@ import 'package:untitled5/SplashScreen.dart';
 import 'LoGinScreen.dart';
 
 import 'firebase_options.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 
 
 Future<void> main() async {
   // Bắt buộc để đảm bảo Flutter khởi tạo trước khi gọi Firebase
   WidgetsFlutterBinding.ensureInitialized();
-
+  await dotenv.load(fileName: ".env");
   // Khởi tạo Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
