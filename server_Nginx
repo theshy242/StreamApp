@@ -1,0 +1,150 @@
+
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections 768;
+    # multi_accept on;
+}
+
+rtmp {
+    server {
+        listen 1935;                    # Port RTMP
+        listen [::]:1935 ipv6only=on;
+        chunk_size 4096;                # Kích thước chunk
+        ping 30s;                       # Giữ kết nối
+        ping_timeout 10s;
+        ack_window 5000000;             # Window size
+        buflen 5s;                      # Buffer length
+        
+        # ========== ỨNG DỤNG LIVE (phát trực tiếp) ==========
+application live {
+    live on;
+    meta copy;
+    allow publish all;
+    allow play all;
+
+    hls off;
+
+    exec ffmpeg -i rtmp://localhost/live/$name -map 0:v -map 0:a -c:v libx264 -b:v 5000k -s 1920x1080 -c:a aac -b:a 128k -f hls -hls_time 3 -hls_list_size 6 -hls_flags delete_segments+independent_segments -hls_segment_filename /var/www/html/live/$name/1080p_%03d.ts /var/www/html/live/$name/index_1080p.m3u8;
+
+    exec ffmpeg -i rtmp://localhost/live/$name -map 0:v -map 0:a -c:v libx264 -b:v 2500k -s 1280x720 -c:a aac -b:a 96k -f hls -hls_time 3 -hls_list_size 6 -hls_flags delete_segments+independent_segments -hls_segment_filename /var/www/html/live/$name/720p_%03d.ts /var/www/html/live/$name/index_720p.m3u8;
+
+    exec ffmpeg -i rtmp://localhost/live/$name -map 0:v -map 0:a -c:v libx264 -b:v 1000k -s 854x480 -c:a aac -b:a 64k -f hls -hls_time 3 -hls_list_size 6 -hls_flags delete_segments+independent_segments -hls_segment_filename /var/www/html/live/$name/480p_%03d.ts /var/www/html/live/$name/index_480p.m3u8;
+}
+        
+        # ========== ỨNG DỤNG VOD (chỉ ghi video) ==========
+        application record {
+            live on;
+            record all;
+            record_path /var/www/html/vods;
+            record_unique on;
+            record_suffix _%Y%m%d_%H%M%S.mp4;
+            record_max_size 500M;
+            
+            # Tắt HLS cho ứng dụng này
+            hls off;
+        }
+    }
+}
+
+http {
+    # ========== CẤU HÌNH HTTP CƠ BẢN ==========
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+    
+    # ========== SERVER BLOCK ==========
+    server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+        server_name _;  # Thay bằng domain của bạn
+        
+        root /var/www/html;
+        index index.html index.htm;
+        
+        # ========== LIVE HLS STREAMS ==========
+        location /live {
+            types {
+                application/vnd.apple.mpegurl m3u8;
+                video/mp2t ts;
+            }
+            alias /var/www/html/live/;
+            add_header Cache-Control no-cache;  # No cache cho live
+            add_header Access-Control-Allow-Origin *;
+            add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept";
+        }
+        
+        # ========== VODS (VIDEO ON DEMAND) ==========
+        location /vods {
+            alias /var/www/html/vods;
+            autoindex on;  # Hiển thị danh sách file
+            autoindex_exact_size off;
+            autoindex_localtime on;
+            
+            # Headers cho video streaming
+            add_header Cache-Control "public, max-age=86400";
+            add_header Access-Control-Allow-Origin *;
+            
+            # MIME types cho video
+            types {
+                video/mp4 mp4;
+                video/webm webm;
+                video/ogg ogv;
+                application/x-mpegURL m3u8;
+                video/MP2T ts;
+            }
+        }
+        
+        # ========== RECORDINGS (file gốc) ==========
+location /recordings/ {
+    alias /var/www/html/recordings/;
+
+    autoindex on;
+    autoindex_exact_size off;
+    autoindex_localtime on;
+
+    index off;
+
+    add_header Access-Control-Allow-Origin *;
+    add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
+    add_header Access-Control-Allow-Headers "Range, Origin, Content-Type, Accept";
+    add_header Accept-Ranges bytes;
+
+    types {
+        video/mp4 mp4;
+    }
+}
+        
+        # ========== NGINX-RTMP STATISTICS ==========
+        location /stat {
+            rtmp_stat all;
+            rtmp_stat_stylesheet stat.xsl;
+        }
+        
+        location /stat.xsl {
+            root /usr/share/nginx/html;
+        }
+        
+        # ========== WEBSOCKET SUPPORT ==========
+        location /ws {
+            proxy_pass http://127.0.0.1:8080;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "Upgrade";
+            proxy_set_header Host $host;
+        }
+        
+        # ========== DEFAULT LOCATION ==========
+        location / {
+            try_files $uri $uri/ =404;
+        }
+    }
+}
