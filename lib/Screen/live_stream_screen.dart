@@ -8,6 +8,21 @@ import 'package:chewie/chewie.dart';
 import 'package:untitled5/Model/ChatService.dart';
 import 'package:firebase_database/firebase_database.dart';
 
+// Định nghĩa Quality Level ngay bên ngoài class
+enum VideoQuality {
+  auto('Auto', Icons.auto_awesome, 'Tự động', Colors.green),
+  high('High', Icons.hd, '1080p', Colors.blue),
+  medium('Medium', Icons.video_settings, '720p', Colors.purple),
+  low('Low', Icons.sd, '480p', Colors.orange);
+
+  final String name;
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const VideoQuality(this.name, this.icon, this.label, this.color);
+}
+
 class LiveStreamScreen extends StatefulWidget {
   final StreamItem streamItem;
   final User user;
@@ -57,12 +72,19 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
   ChewieController? _chewieController;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _chatScrollController = ScrollController();
-  // Biến quản lý chat
+
+  // Biến quản lý chat (giữ nguyên)
   bool _showChat = true;
   bool _isChatExpanded = false;
   double _chatPanelHeight = 220;
   int _liveViewerCount = 0;
   bool _isFollowing = false;
+
+  // === THÊM BIẾN MỚI CHO CHẤT LƯỢNG VIDEO ===
+  VideoQuality _currentQuality = VideoQuality.auto;
+  bool _isBuffering = false;
+  bool _showQualityMenu = false;
+  double _playbackSpeed = 1.0;
 
   @override
   void initState() {
@@ -75,40 +97,248 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
   }
 
   void _initializeVideoPlayer() {
-    _videoController = VideoPlayerController.network(widget.user.serverUrl)
-      ..initialize().then((_) {
-        // ✅ FIXED: Sử dụng tỷ lệ THỰC của video, không ép theo màn hình
-        final videoAspectRatio = _videoController.value.aspectRatio;
+    String videoUrl = _getVideoUrlBasedOnQuality();
 
-        _chewieController = ChewieController(
-          videoPlayerController: _videoController,
-          autoPlay: true,
-          looping: true,
-          showControls: true,
-          allowFullScreen: true,
-          // ✅ Sử dụng tỷ lệ khung hình thực của video
-          aspectRatio: videoAspectRatio,
-          showControlsOnInitialize: true,
-          // ✅ Cấu hình placeholder
-          placeholder: Container(
-            color: Colors.grey[900],
-            child: const Center(
-              child: CircularProgressIndicator(color: Colors.purpleAccent),
-            ),
+    _videoController = VideoPlayerController.network(videoUrl);
+
+    // Sử dụng Future.then() thay vì async/await trong initialize
+    _videoController.initialize().then((_) {
+      final videoAspectRatio = _videoController.value.aspectRatio;
+
+      _chewieController = ChewieController(
+        videoPlayerController: _videoController,
+        autoPlay: true,
+        looping: true,
+        showControls: true,
+        allowFullScreen: true,
+        aspectRatio: videoAspectRatio,
+        showControlsOnInitialize: true,
+        placeholder: Container(
+          color: Colors.grey[900],
+          child: const Center(
+            child: CircularProgressIndicator(color: Colors.purpleAccent),
           ),
-          // ✅ Tự động điều chỉnh
-          autoInitialize: true,
-          allowedScreenSleep: false,
-        );
+        ),
+        autoInitialize: true,
+        allowedScreenSleep: false,
+        materialProgressColors: ChewieProgressColors(
+          playedColor: Colors.purpleAccent,
+          handleColor: Colors.purpleAccent,
+          backgroundColor: Colors.grey[700]!,
+          bufferedColor: Colors.grey[500]!,
+        ),
+      );
 
-        setState(() {});
-      }).catchError((error) {
-        print('Error loading stream: $error');
-        setState(() {});
+      // Thêm listener để phát hiện buffering
+      _videoController.addListener(() {
+        if (_videoController.value.isBuffering && mounted) {
+          setState(() {
+            _isBuffering = true;
+          });
+        } else if (mounted) {
+          setState(() {
+            _isBuffering = false;
+          });
+        }
       });
+
+      setState(() {
+        _isBuffering = false;
+      });
+    }).catchError((error) {
+      print('Error loading stream: $error');
+      // Nếu không tải được chất lượng đã chọn, thử chất lượng thấp hơn
+      _fallbackToLowerQuality();
+    });
+  }
+  String _getVideoUrlBasedOnQuality() {
+    String baseUrl = widget.user.serverUrl;
+
+    // Nếu server URL không phải là HLS (.m3u8), thì không thể thay đổi chất lượng
+    if (!baseUrl.contains('.m3u8')) {
+      return baseUrl;
+    }
+
+    // Logic đơn giản: thêm suffix cho chất lượng
+    switch (_currentQuality) {
+      case VideoQuality.high:
+        return baseUrl.replaceFirst('.m3u8', '_1080p.m3u8');
+      case VideoQuality.medium:
+        return baseUrl.replaceFirst('.m3u8', '_720p.m3u8');
+      case VideoQuality.low:
+        return baseUrl.replaceFirst('.m3u8', '_480p.m3u8');
+      case VideoQuality.auto:
+      default:
+        return baseUrl; // Master playlist
+    }
   }
 
-  // === PHẦN XỬ LÝ CHAT (Tích hợp đầy đủ) ===
+  void _fallbackToLowerQuality() {
+    if (_currentQuality == VideoQuality.high) {
+      _changeVideoQuality(VideoQuality.medium);
+    } else if (_currentQuality == VideoQuality.medium) {
+      _changeVideoQuality(VideoQuality.low);
+    } else if (_currentQuality == VideoQuality.low) {
+      _changeVideoQuality(VideoQuality.auto);
+    }
+  }
+
+  void _changeVideoQuality(VideoQuality newQuality) async {
+    if (_currentQuality == newQuality) return;
+
+    print('🔄 Changing quality to: ${newQuality.name}');
+
+    try {
+      // Dispose controllers cũ (KHÔNG DÙNG AWAIT VỚI dispose())
+      if (_chewieController != null) {
+        _chewieController!.dispose();  // ← SỬA: bỏ await
+      }
+      _videoController.dispose();       // ← SỬA: bỏ await
+
+      // Cập nhật state
+      setState(() {
+        _currentQuality = newQuality;
+        _isBuffering = true;
+      });
+
+      // Khởi tạo lại với URL mới
+      _initializeVideoPlayer();
+
+      // Hiển thị thông báo
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(newQuality.icon, size: 20, color: Colors.white),
+              const SizedBox(width: 8),
+              Text('Đã chuyển sang ${newQuality.label}'),
+            ],
+          ),
+          duration: const Duration(seconds: 2),
+          backgroundColor: newQuality.color,
+        ),
+      );
+    } catch (e) {
+      print('❌ Error changing quality: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không thể thay đổi chất lượng'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showQualitySelector() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.black.withOpacity(0.95),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Row(
+                children: [
+                  const Icon(Icons.video_settings, color: Colors.purpleAccent, size: 24),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Chọn chất lượng video',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white54),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
+
+              // Danh sách chất lượng
+              ...VideoQuality.values.map((quality) {
+                final isSelected = _currentQuality == quality;
+
+                return ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? quality.color : Colors.grey[800],
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      quality.icon,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  title: Text(
+                    quality.name,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.white70,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                  subtitle: Text(
+                    quality.label,
+                    style: TextStyle(
+                      color: isSelected ? quality.color : Colors.white54,
+                      fontSize: 12,
+                    ),
+                  ),
+                  trailing: isSelected
+                      ? const Icon(Icons.check, color: Colors.purpleAccent)
+                      : null,
+                  onTap: () {
+                    _changeVideoQuality(quality);
+                    Navigator.pop(context);
+                  },
+                );
+              }).toList(),
+
+              const SizedBox(height: 20),
+
+              // Thông tin hiện tại
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[900],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Chất lượng tốt nhất phụ thuộc vào tốc độ mạng của bạn',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // === PHẦN XỬ LÝ CHAT (GIỮ NGUYÊN) ===
   void _sendWelcomeMessage() {
     ChatService.sendSystemMessage(
       streamId: widget.streamItem.name,
@@ -120,13 +350,11 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     final DatabaseReference viewerRef = FirebaseDatabase.instance
         .ref('streams/${widget.streamItem.name}/viewers');
 
-    // Tăng số viewer
     viewerRef.runTransaction((currentData) {
       int current = (currentData as int? ?? 0) + 1;
       return Transaction.success(current);
     });
 
-    // Lắng nghe thay đổi
     viewerRef.onValue.listen((event) {
       if (mounted && event.snapshot.value != null) {
         setState(() {
@@ -150,7 +378,6 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
 
     _messageController.clear();
 
-    // Cuộn xuống tin nhắn mới nhất
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_chatScrollController.hasClients) {
         _chatScrollController.animateTo(
@@ -173,7 +400,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
       _isChatExpanded = !_isChatExpanded;
       _chatPanelHeight = _isChatExpanded
           ? MediaQuery.of(context).size.height * 0.5
-          : 220; // Chiều cao mặc định
+          : 220;
     });
   }
 
@@ -191,7 +418,6 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     );
   }
 
-  // Widget hiển thị danh sách tin nhắn
   Widget _buildChatListView() {
     return StreamBuilder(
       stream: ChatService.getStreamMessages(widget.streamItem.name),
@@ -225,7 +451,6 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     );
   }
 
-  // Widget hiển thị một tin nhắn
   Widget _buildSingleChatMessage(message) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -316,7 +541,6 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
 
   @override
   void dispose() {
-    // Giảm số viewer khi rời đi
     final viewerRef = FirebaseDatabase.instance
         .ref('streams/${widget.streamItem.name}/viewers');
     viewerRef.runTransaction((currentData) {
@@ -332,24 +556,62 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     super.dispose();
   }
 
-  // ✅ PHƯƠNG THỨC MỚI: Hiển thị video với tỷ lệ đúng
+  // === WIDGET VIDEO PLAYER (THÊM BUFFERING INDICATOR) ===
   Widget _buildCorrectedVideoPlayer() {
     if (_chewieController != null &&
         _chewieController!.videoPlayerController.value.isInitialized) {
 
       final videoAspectRatio = _videoController.value.aspectRatio;
 
-      return Center(
-        child: AspectRatio(
-          // ✅ Sử dụng tỷ lệ khung hình THỰC của video
-          aspectRatio: videoAspectRatio,
-          child: Chewie(
-            controller: _chewieController!,
+      return Stack(
+        children: [
+          Center(
+            child: AspectRatio(
+              aspectRatio: videoAspectRatio,
+              child: Chewie(
+                controller: _chewieController!,
+              ),
+            ),
           ),
-        ),
+
+          // Buffering Indicator
+          if (_isBuffering)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withOpacity(0.5),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        color: _currentQuality.color,
+                        strokeWidth: 3,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Đang tải video...',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Chất lượng: ${_currentQuality.label}',
+                        style: TextStyle(
+                          color: _currentQuality.color,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       );
     } else {
-      // Hiển thị placeholder trong khi loading
       return Image.network(
         widget.streamItem.image,
         fit: BoxFit.cover,
@@ -371,62 +633,29 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     }
   }
 
-  // ✅ PHƯƠNG THỨC MỚI: Hiển thị video full màn hình không bị biến dạng
-  Widget _buildFullScreenVideo() {
-    if (_chewieController == null ||
-        !_chewieController!.videoPlayerController.value.isInitialized) {
-      return _buildLoadingPlaceholder();
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final videoAspectRatio = _videoController.value.aspectRatio;
-        final containerAspectRatio = constraints.maxWidth / constraints.maxHeight;
-
-        Widget videoPlayer = Chewie(controller: _chewieController!);
-
-        // Nếu tỷ lệ video và container khác nhau, cần căn chỉnh
-        if ((videoAspectRatio - containerAspectRatio).abs() > 0.01) {
-          if (videoAspectRatio > containerAspectRatio) {
-            // Video rộng hơn container => căn theo chiều ngang
-            final heightScale = containerAspectRatio / videoAspectRatio;
-            return Transform.scale(
-              scale: heightScale,
-              alignment: Alignment.center,
-              child: videoPlayer,
-            );
-          } else {
-            // Video cao hơn container => căn theo chiều dọc
-            final widthScale = videoAspectRatio / containerAspectRatio;
-            return Transform.scale(
-              scale: widthScale,
-              alignment: Alignment.center,
-              child: videoPlayer,
-            );
-          }
-        }
-
-        // Tỷ lệ khớp nhau, hiển thị bình thường
-        return videoPlayer;
-      },
-    );
-  }
-
-  Widget _buildLoadingPlaceholder() {
-    return Container(
-      color: Colors.black,
-      child: Stack(
-        children: [
-          Image.network(
-            widget.streamItem.image,
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
+  // === WIDGET CHỌN CHẤT LƯỢNG (NÚT TRÊN GIAO DIỆN) ===
+  Widget _buildQualityButton() {
+    return Positioned(
+      top: 50,
+      right: 15, // Điều chỉnh vị trí
+      child: GestureDetector(
+        onTap: _showQualitySelector,
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: _currentQuality.color,
+              width: 2,
+            ),
           ),
-          const Center(
-            child: CircularProgressIndicator(color: Colors.purpleAccent),
+          child: Icon(
+            _currentQuality.icon,
+            color: _currentQuality.color,
+            size: 22,
           ),
-        ],
+        ),
       ),
     );
   }
@@ -439,165 +668,214 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // ========== VIDEO PLAYER VỚI TỶ LỆ ĐÚNG ==========
-          // ✅ THAY ĐỔI: Sử dụng phương thức mới để hiển thị video
+          // VIDEO PLAYER - Chiếm toàn bộ màn hình
           Positioned.fill(
-            child: _buildCorrectedVideoPlayer(), // Hoặc _buildFullScreenVideo()
+            child: _buildCorrectedVideoPlayer(),
           ),
 
-          // Gradient overlay (Giữ nguyên)
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withOpacity(0.3),
-                  Colors.transparent,
-                  Colors.transparent,
-                  Colors.black.withOpacity(0.7),
-                ],
+          // GRADIENT OVERLAY - Chỉ ở phần trên và dưới, không che video
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 100,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.7),
+                    Colors.transparent,
+                  ],
+                ),
               ),
             ),
           ),
 
-          // Nút Back (Giữ nguyên)
           Positioned(
-            top: 50,
-            left: 15,
-            child: GestureDetector(
-              onTap: () => Navigator.pop(context),
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 100,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.7),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // HEADER BAR - Gọn gàng hơn
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
               child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.arrow_back,
-                  color: Colors.white,
-                  size: 24,
+                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                child: Row(
+                  children: [
+                    // Nút Back
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.arrow_back,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 10),
+
+                    // Avatar và thông tin streamer
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                ProfileDetailScreen(streamItem: widget.streamItem),
+                          ),
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundImage: NetworkImage(widget.streamItem.image),
+                          ),
+                          const SizedBox(width: 10),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.streamItem.name,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                "${_liveViewerCount} viewers",
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              )
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const Spacer(),
+
+                    // Nút chất lượng video
+                    GestureDetector(
+                      onTap: _showQualitySelector,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          _currentQuality.icon,
+                          color: _currentQuality.color,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 10),
+
+                    // Nút Follow
+                    GestureDetector(
+                      onTap: _toggleFollow,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: _isFollowing ? Colors.grey[700] : Colors.purpleAccent,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Text(
+                          _isFollowing ? "Following" : "Follow",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    if (widget.streamItem.isLiveNow)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            "LIVE",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
           ),
 
-          // ========== PHẦN TRÊN: Thông tin streamer ==========
+          // TIÊU ĐỀ STREAM - Di chuyển xuống dưới header
           Positioned(
-            top: 50,
-            left: 70,
-            right: 15,
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            ProfileDetailScreen(streamItem: widget.streamItem),
-                      ),
-                    );
-                  },
-                  child: CircleAvatar(
-                    radius: 20,
-                    backgroundImage: NetworkImage(widget.streamItem.image),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.streamItem.name,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        "${_liveViewerCount} viewers", // Dùng số viewer thực tế
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                        ),
-                      )
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: _toggleFollow,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(15),
-                      gradient: _isFollowing
-                          ? const LinearGradient(
-                          colors: [Colors.grey, Colors.grey])
-                          : const LinearGradient(
-                          colors: [Colors.purpleAccent, Colors.blueAccent]),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 6),
-                    child: Text(
-                      _isFollowing ? "Following" : "Follow",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                if (widget.streamItem.isLiveNow)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      "LIVE",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  )
-              ],
-            ),
-          ),
-
-          // Tiêu đề stream (Giữ nguyên)
-          Positioned(
-            top: 100,
+            top: 80,
             left: 15,
             right: 15,
             child: Text(
-              widget.user.serverUrl,
+              widget.streamItem.streamTitle,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
                 shadows: [
                   Shadow(
-                    blurRadius: 10,
+                    blurRadius: 4,
                     color: Colors.black,
-                    offset: Offset(2, 2),
+                    offset: Offset(1, 1),
                   ),
                 ],
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
 
-          // ========== PHẦN DƯỚI: PANEL CHAT TIKTOK STYLE ==========
-          // Panel chat (chỉ hiện khi _showChat = true)
+          // PANEL CHAT - Hiển thị bên dưới video
           if (_showChat)
             Positioned(
               left: 10,
@@ -619,13 +897,11 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
                 ),
                 child: Column(
                   children: [
-                    // Header của panel chat - Có thể kéo để thay đổi kích thước
                     GestureDetector(
                       onTap: _toggleChatExpand,
                       onVerticalDragUpdate: (details) {
                         setState(() {
                           final newHeight = _chatPanelHeight - details.delta.dy;
-                          // Giới hạn chiều cao từ 150px đến 60% màn hình
                           _chatPanelHeight = newHeight.clamp(
                               150, MediaQuery.of(context).size.height * 0.6);
                           _isChatExpanded = _chatPanelHeight > 250;
@@ -678,7 +954,6 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
                       ),
                     ),
 
-                    // Danh sách tin nhắn - Scrollable
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
@@ -687,7 +962,6 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
                       ),
                     ),
 
-                    // Thanh nhập tin nhắn
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -720,9 +994,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
                                         Icons.emoji_emotions_outlined,
                                         color: Colors.white70,
                                         size: 20),
-                                    onPressed: () {
-                                      // Có thể thêm emoji picker ở đây
-                                    },
+                                    onPressed: () {},
                                   ),
                                 ),
                                 style: const TextStyle(
@@ -761,38 +1033,34 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
               ),
             ),
 
-          // ========== CÁC NÚT ACTION BÊN PHẢI (Giữ nguyên vị trí) ==========
+          // CÁC NÚT ACTION BÊN PHẢI - Di chuyển lên trên panel chat
           Positioned(
             bottom: _showChat ? (_chatPanelHeight + 30) : 120,
             right: 15,
-            child: Column(
-              children: [
-                widget._buildActionButton(
-                  icon: Icons.favorite_border,
-                  label: widget.streamItem.followers,
-                  onTap: () {},
-                ),
-                const SizedBox(height: 20),
-                widget._buildActionButton(
-                  icon: _showChat
-                      ? Icons.chat_bubble
-                      : Icons.chat_bubble_outline,
-                  label: "Chat",
-                  onTap: _toggleChatVisibility,
-                ),
-                const SizedBox(height: 20),
-                widget._buildActionButton(
-                  icon: Icons.share_outlined,
-                  label: "Share",
-                  onTap: () {},
-                ),
-                const SizedBox(height: 20),
-                widget._buildActionButton(
-                  icon: Icons.more_vert,
-                  label: "More",
-                  onTap: () {},
-                ),
-              ],
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                children: [
+                  widget._buildActionButton(
+                    icon: Icons.favorite_border,
+                    label: widget.streamItem.followers,
+                    onTap: () {},
+                  ),
+                  const SizedBox(height: 15),
+                  widget._buildActionButton(
+                    icon: _showChat
+                        ? Icons.chat_bubble
+                        : Icons.chat_bubble_outline,
+                    label: "Chat",
+                    onTap: _toggleChatVisibility,
+                  ),
+
+                ],
+              ),
             ),
           ),
         ],

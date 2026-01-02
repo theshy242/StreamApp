@@ -1,11 +1,17 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:firebase_database/firebase_database.dart';
 import '../Model/user.dart';
+import 'package:http/http.dart' as http;
+import 'package:html/parser.dart' as parser;
+import 'vod_player_screen.dart';
+import 'package:untitled5/Model/model.dart';
 
 class InfoUserScreen extends StatefulWidget {
-  final User user; // CHỈ CẦN user
+  final User user;
 
   const InfoUserScreen({super.key, required this.user});
 
@@ -15,9 +21,14 @@ class InfoUserScreen extends StatefulWidget {
 
 class _InfoUserScreenState extends State<InfoUserScreen> {
   late User _currentUser;
+  List<Map<String, dynamic>> _serverVodList = [];
+  bool _isLoadingVods = true;
+  String? _firebaseUserId;
   bool _isLoading = false;
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
   final Random _random = Random();
+  String? _serverError;
+  String _serverIp = '192.168.1.5'; // ĐỔI IP CỦA BẠN Ở ĐÂY
 
   // 🔹 Danh sách API avatar
   final List<String> _avatarAPIs = [
@@ -35,6 +46,7 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
     super.initState();
     _currentUser = widget.user;
     print('👤 User loaded: ${_currentUser.name} (${_currentUser.email})');
+    _loadVODsFromServer();
   }
 
   // 🔹 Tạo URL avatar ngẫu nhiên
@@ -75,7 +87,7 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
 
             if (userEmail == _currentUser.email) {
               print('✅ Found userId by email: $key');
-              return key; // user09, user10, user_01, etc.
+              return key;
             }
           } catch (e) {
             print('⚠️ Error parsing user $key: $e');
@@ -167,12 +179,10 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
         }
       } catch (e) {
         print('⚠️ Error updating streamItems: $e');
-        // Vẫn tiếp tục dù có lỗi ở streamItems
       }
 
       // 4. Cập nhật UI
       setState(() {
-        // Tạo User mới với avatar mới (giữ nguyên các field khác)
         _currentUser = User(
           userId: _currentUser.userId,
           name: _currentUser.name,
@@ -254,11 +264,170 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
     }
   }
 
-  // 🔹 Hiển thị dialog chọn avatar
+  // ========== LOAD VODs TỪ SERVER - ĐÃ SỬA LỖI ==========
+  Future<void> _loadVODsFromServer() async {
+    if (mounted) {
+      setState(() {
+        _isLoadingVods = true;
+        _serverError = null;
+      });
+    }
+
+    try {
+      // 1. Lấy userId thật trong Firebase
+      final userId = await _findUserIdInFirebase();
+      if (userId == null) {
+        if (mounted) {
+          setState(() {
+            _isLoadingVods = false;
+            _serverError = 'Không tìm thấy userId trong Firebase';
+          });
+        }
+        return;
+      }
+
+      _firebaseUserId = userId;
+      print('🎬 Loading VOD từ server: $_serverIp cho user: $userId');
+
+      final response = await http.get(
+        Uri.parse('http://$_serverIp/recordings/'),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final document = parser.parse(response.body);
+        final links = document.querySelectorAll('a');
+
+        final userLowerCase = userId.trim().toLowerCase(); // Tên biến đúng
+        final currentUserVods = links
+            .map((link) => link.attributes['href'] ?? '')
+            .where((href) {
+          final file = href.toLowerCase();
+          // QUAN TRỌNG: Kiểm tra đúng pattern tên file
+          return file.endsWith('.mp4') &&
+              (file.startsWith('$userLowerCase-') ||
+                  file.startsWith('${userLowerCase}_') ||
+                  file.contains('_$userLowerCase'));
+        })
+            .map((fileName) => {
+          'fileName': fileName,
+          'downloadUrl': 'http://$_serverIp/recordings/$fileName',
+        })
+            .toList();
+
+        if (mounted) {
+          setState(() {
+            _serverVodList = currentUserVods;
+            _isLoadingVods = false;
+          });
+        }
+
+        print('✅ Tìm thấy ${_serverVodList.length} file MP4 cho user $userLowerCase');
+
+        // Debug: in tất cả file tìm thấy
+        print('📁 Tất cả file MP4 trong server:');
+        for (var link in links) {
+          final href = link.attributes['href'] ?? '';
+          if (href.toLowerCase().endsWith('.mp4')) {
+            print('  - $href');
+          }
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _serverError = 'Lỗi server: ${response.statusCode}';
+            _isLoadingVods = false;
+          });
+        }
+      }
+    } catch (error) {
+      print('❌ Error loading VODs: $error');
+      if (mounted) {
+        setState(() {
+          _serverError = 'Không thể kết nối server: $error';
+          _isLoadingVods = false;
+        });
+      }
+    }
+  }
+
+  // ========== PHƯƠNG THỨC XỬ LÝ VODs TỪ SERVER ==========
+  void _playServerVOD(Map<String, dynamic> vodData) {
+    final fileName = vodData['fileName'] as String;
+    final downloadUrl = vodData['downloadUrl'] as String;
+
+    // Tạo title từ tên file
+    String title = _extractTitleFromFileName(fileName);
+
+    // Tạo StreamItem từ VOD data - GIỐNG ProfileDetailScreen
+    final vodItem = StreamItem(
+      name: _currentUser.name,
+      category: 'VOD',
+      url: downloadUrl,
+      isLiveNow: false,
+      colorHex: '#FF4D67',
+      image: _currentUser.avatar,
+      streamTitle: title,
+      viewer: '0',
+      followers: _currentUser.followers.toString(),
+      coverImage: _currentUser.avatar,
+      post: '0',
+      following: '0',
+      description: 'Video đã ghi từ server',
+      userId: _firebaseUserId ?? _currentUser.userId,
+    );
+
+    print('🎬 Opening Server VOD: $title');
+    print('📁 URL: $downloadUrl');
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VODPlayerScreen(
+          streamItem: vodItem,
+          user: _currentUser,
+          vodUrl: downloadUrl,
+        ),
+      ),
+    );
+  }
+
+  // ========== HELPER METHODS ==========
+  String _extractTitleFromFileName(String fileName) {
+    // Xóa .mp4
+    String name = fileName.replaceAll('.mp4', '');
+
+    // Xóa timestamp pattern: _YYYYMMDD_HHMMSS
+    name = name.replaceAll(RegExp(r'_\d{8}_\d{6}'), '');
+
+    // Xóa số ở cuối: -1, -2, etc
+    name = name.replaceAll(RegExp(r'-\d+$'), '');
+
+    // Tách userId nếu có
+    if (name.contains('-')) {
+      final parts = name.split('-');
+      if (parts.length > 1) {
+        name = parts.sublist(1).join('-');
+      }
+    }
+
+    // Thay _ bằng space
+    name = name.replaceAll('_', ' ');
+
+    // Thay - bằng space
+    name = name.replaceAll('-', ' ');
+
+    // Capitalize first letter
+    if (name.isNotEmpty) {
+      name = name[0].toUpperCase() + name.substring(1);
+    }
+
+    return name.isNotEmpty ? name : 'Stream Recording';
+  }
+
+  // ========== HIỂN THỊ AVATAR PICKER ==========
   Future<void> _showAvatarPicker() async {
     if (_isLoading) return;
 
-    // Tạo 6 avatar mẫu
     List<String> sampleAvatars = List.generate(6, (index) => _generateRandomAvatar());
 
     showDialog(
@@ -541,19 +710,25 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
                                   ? _currentUser.avatar
                                   : "https://cdn-icons-png.flaticon.com/512/1144/1144760.png",
                               fit: BoxFit.cover,
-                              loadingBuilder: (context, child, loadingProgress) {
+                              loadingBuilder:
+                                  (context, child, loadingProgress) {
                                 if (loadingProgress == null) return child;
                                 return Center(
                                   child: CircularProgressIndicator(
-                                    value: loadingProgress.expectedTotalBytes != null
-                                        ? loadingProgress.cumulativeBytesLoaded /
-                                        loadingProgress.expectedTotalBytes!
+                                    value: loadingProgress
+                                        .expectedTotalBytes !=
+                                        null
+                                        ? loadingProgress
+                                        .cumulativeBytesLoaded /
+                                        loadingProgress
+                                            .expectedTotalBytes!
                                         : null,
                                     color: const Color(0xFFFF4D67),
                                   ),
                                 );
                               },
-                              errorBuilder: (context, error, stackTrace) {
+                              errorBuilder:
+                                  (context, error, stackTrace) {
                                 return Container(
                                   color: Colors.grey[900],
                                   child: const Icon(
@@ -620,7 +795,8 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _UserInfoRow("Email", _currentUser.email),
-                      _UserInfoRow("Server URL", _currentUser.serverUrl),
+                      _UserInfoRow("Server", _serverIp),
+                      _UserInfoRow("User ID", _firebaseUserId ?? _currentUser.userId),
                       _UserInfoRow("Description", _currentUser.description),
                     ],
                   ),
@@ -631,8 +807,9 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _UserStatBox("Streams", "0"),
-                      _UserStatBox("Followers", _currentUser.followers.toString()),
+                      _UserStatBox("Streams", _serverVodList.length.toString()),
+                      _UserStatBox(
+                          "Followers", _currentUser.followers.toString()),
                       _UserStatBox("Following", "0"),
                     ],
                   ),
@@ -691,7 +868,7 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
                 const Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    "Highlight Streams",
+                    "Video Recordings",
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -701,56 +878,303 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
                 ),
 
                 const SizedBox(height: 15),
-                GridView.builder(
-                  padding: EdgeInsets.zero,
-                  physics: const NeverScrollableScrollPhysics(),
-                  shrinkWrap: true,
-                  itemCount: 6,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    mainAxisSpacing: 8,
-                    crossAxisSpacing: 8,
-                    childAspectRatio: 0.75,
-                  ),
-                  itemBuilder: (context, idx) {
-                    return ClipRRect(
+
+                // ========== HIỂN THỊ VODs TỪ SERVER ==========
+                if (_isLoadingVods)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: CircularProgressIndicator(color: Color(0xFFFF4D67)),
+                    ),
+                  )
+                else if (_serverError != null)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
-                      child: Stack(
-                        children: [
-                          Image.asset(
-                            "assets/images/demo${(idx % 3) + 1}.jpg",
-                            fit: BoxFit.cover,
+                      border: Border.all(color: Colors.redAccent),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline,
+                            color: Colors.redAccent, size: 24),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _serverError!,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
                           ),
-                          Positioned(
-                            top: 8,
-                            left: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF4D67),
-                                borderRadius: BorderRadius.circular(8),
+                        ),
+                        TextButton(
+                          onPressed: _loadVODsFromServer,
+                          child: const Text(
+                            'Thử lại',
+                            style: TextStyle(
+                              color: Color(0xFFFF4D67),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_serverVodList.isEmpty)
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(40),
+                        child: Column(
+                          children: [
+                            const Icon(
+                              Icons.video_library_outlined,
+                              color: Colors.white54,
+                              size: 60,
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              "Chưa có video nào",
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 16,
                               ),
-                              child: const Text(
-                                "Replay",
-                                style: TextStyle(
-                                  fontSize: 10,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              "User ID: ${_firebaseUserId ?? _currentUser.userId}",
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                            Text(
+                              "Server: $_serverIp",
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.video_file,
+                                color: Color(0xFFFF4D67),
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "recordings (${_serverVodList.length})",
+                                style: const TextStyle(
                                   color: Colors.white,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ),
+                              const Spacer(),
+                              TextButton.icon(
+                                onPressed: _loadVODsFromServer,
+                                icon: const Icon(Icons.refresh,
+                                    color: Colors.white54, size: 18),
+                                label: const Text(
+                                  'Refresh',
+                                  style: TextStyle(color: Colors.white54),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                        ),
+                        GridView.builder(
+                          padding: EdgeInsets.zero,
+                          physics: const NeverScrollableScrollPhysics(),
+                          shrinkWrap: true,
+                          itemCount: _serverVodList.length,
+                          gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 0.85,
+                          ),
+                          itemBuilder: (context, index) {
+                            final vodData = _serverVodList[index];
+                            final fileName = vodData['fileName'] as String;
+                            final title = _extractTitleFromFileName(fileName);
+
+                            return _buildVodCard(vodData, title, fileName);
+                          },
+                        ),
+                      ],
+                    ),
+
                 const SizedBox(height: 40),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // CARD CHO VOD - GIỐNG ProfileDetailScreen
+  Widget _buildVodCard(Map<String, dynamic> vodData, String title, String fileName) {
+    return GestureDetector(
+      onTap: () => _playServerVOD(vodData),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[900],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.1),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Thumbnail
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(12)),
+              child: Container(
+                height: 120,
+                width: double.infinity,
+                color: Colors.grey[800],
+                child: Stack(
+                  children: [
+                    Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF4D67)
+                                  .withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.play_arrow,
+                              color: Color(0xFFFF4D67),
+                              size: 30,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'MP4',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding:
+                        const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF4D67),
+                          borderRadius:
+                          BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'VOD',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Info
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.person,
+                        color: Colors.white54,
+                        size: 12,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          _currentUser.name,
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 11,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.video_file,
+                        color: Colors.white54,
+                        size: 12,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          fileName.length > 20
+                              ? '${fileName.substring(0, 20)}...'
+                              : fileName,
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 11,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
