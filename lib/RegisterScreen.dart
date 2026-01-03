@@ -16,6 +16,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _confirmController = TextEditingController();
   bool _obscurePassword = true;
   bool _loading = false;
+  String _getNameFromEmail(String email) {
+    if (!email.contains('@')) return email;
+    return email.split('@').first;
+  }
 
   // Hàm tạo userId tuần tự: user09, user10, user11... (tiếp theo số 8 hiện tại)
   Future<String> _generateSequentialUserId() async {
@@ -75,10 +79,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
         await userRef.set({
           "userId": userId,           // user09, user10,...
           "firebaseUid": user.uid,    // UID thật từ Firebase Auth
-          "name": "New User",
+          "name": _getNameFromEmail(user.email ?? ""),
           "email": user.email ?? "",
           "avatar": "https://cdn-icons-png.flaticon.com/512/1144/1144760.png",
-          "serverUrl": "rtmp://192.168.1.249/live/$streamKey",
+          "serverUrl": "192.168.3.72",
           "description": "",
           "followers": 0,
           "createdAt": DateTime.now().millisecondsSinceEpoch,

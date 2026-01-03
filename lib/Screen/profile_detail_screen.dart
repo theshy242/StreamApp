@@ -33,7 +33,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
   List<Map<String, dynamic>> _serverVodList = [];
   bool _isLoadingServerVODs = true;
   String? _serverError;
-  String _serverIp = '192.168.1.5'; // THAY ĐỔI IP CỦA BẠN Ở ĐÂY
+  String _serverIp = '172.20.10.2'; // THAY ĐỔI IP CỦA BẠN Ở ĐÂY
 
   // Database reference - GIỐNG NHƯ HOME SCREEN
   static FirebaseDatabase? _database;

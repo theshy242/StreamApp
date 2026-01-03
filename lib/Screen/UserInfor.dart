@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:firebase_database/firebase_database.dart';
 import '../Model/user.dart';
+import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as parser;
 import 'vod_player_screen.dart';
+import 'package:untitled5/LoGinScreen.dart';
 import 'package:untitled5/Model/model.dart';
 
 class InfoUserScreen extends StatefulWidget {
@@ -28,7 +30,7 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
   final Random _random = Random();
   String? _serverError;
-  String _serverIp = '192.168.1.5'; // ĐỔI IP CỦA BẠN Ở ĐÂY
+  String _serverIp = '192.168.3.72'; // ĐỔI IP CỦA BẠN Ở ĐÂY
 
   // 🔹 Danh sách API avatar
   final List<String> _avatarAPIs = [
@@ -124,6 +126,26 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
       return null;
     }
   }
+  Future<void> _logout() async {
+    try {
+      await auth.FirebaseAuth.instance.signOut();
+
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreenb()),
+            (route) => false,
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Đăng xuất thất bại ❌"),
+        ),
+      );
+    }
+  }
+
 
   // 🔹 Cập nhật avatar lên Firebase
   Future<void> _updateAvatar(String newAvatarUrl) async {
@@ -818,20 +840,17 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
                 const SizedBox(height: 25),
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      // TODO: Edit profile
-                    },
+                  child:ElevatedButton(
+                    onPressed: _logout,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF4D67),
+                      backgroundColor: Colors.redAccent,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      elevation: 5,
                     ),
                     child: const Text(
-                      "Edit Profile",
+                      "Đăng xuất",
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
