@@ -350,15 +350,16 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     final DatabaseReference viewerRef = FirebaseDatabase.instance
         .ref('streams/${widget.streamItem.name}/viewers');
 
-    viewerRef.runTransaction((currentData) {
-      int current = (currentData as int? ?? 0) + 1;
-      return Transaction.success(current);
-    });
+    // Tạo child cho từng user
+    final userRef = viewerRef.child(widget.user.userId);
+    userRef.set(true); // user online
+    userRef.onDisconnect().remove(); // khi disconnect Firebase tự remove
 
+    // Lắng nghe số lượng viewers thực tế
     viewerRef.onValue.listen((event) {
-      if (mounted && event.snapshot.value != null) {
+      if (mounted) {
         setState(() {
-          _liveViewerCount = event.snapshot.value as int;
+          _liveViewerCount = event.snapshot.children.length;
         });
       }
     });

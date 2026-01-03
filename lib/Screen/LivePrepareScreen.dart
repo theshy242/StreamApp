@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 
 class LivePrepareScreen extends StatefulWidget {
   final User currentUser;
+
   const LivePrepareScreen({super.key, required this.currentUser});
 
   @override
@@ -18,24 +19,23 @@ class LivePrepareScreen extends StatefulWidget {
 
 class _LivePrepareScreenState extends State<LivePrepareScreen>
     with WidgetsBindingObserver {
-  // ===================== KIẾN TRÚC ĐÚNG =====================
-  bool _isLiveSessionActive = false; // LIVE thật sự (server state)
-  bool _isStreamerMode = false; // UI mode (chỉ để hiển thị)
+  // ===================== STATE MANAGEMENT =====================
+  bool _isLiveSessionActive = false; // Trạng thái LIVE thực tế trên server
+  bool _isStreamerMode = false; // Chế độ streamer UI
+  DatabaseReference? _viewerRef;
 
-  // Thêm biến kiểm tra OBS disconnect
+  // Video và OBS state
   bool _isOBSConnected = false;
-  Timer? _obsCheckTimer;
-
-  // ===================== BIẾN TRẠNG THÁI =====================
-  String? selectedCategory;
-  final titleController = TextEditingController();
-
-  // Biến kiểm tra video đã sẵn sàng chưa
   bool _isVideoReady = false;
   bool _isCheckingVideo = false;
   String _videoStatus = '';
+  Timer? _obsCheckTimer;
 
-  // Biến cho video player
+  // UI và data
+  String? selectedCategory;
+  final titleController = TextEditingController();
+
+  // Video player
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
 
@@ -47,34 +47,47 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
 
   // UI
   bool _showChat = true;
-  double _chatPanelHeight = 300;
 
   final List<String> categories = [
-    "Gaming", "Music", "Sports",
-    "Education", "Entertainment", "Just Chatting"
+    "Gaming", "Music", "Sports", "Just Chatting", "Popular"
   ];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _startAutoCheckVideo();
+    _initializeData();
+  }
+
+  void _initializeData() {
+    // Set default category
+    selectedCategory = categories[3]; // "Just Chatting"
+
+    // Start checking OBS connection if not in streamer mode
+    if (!_isStreamerMode) {
+      _startAutoCheckVideo();
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _stopAllTimers();
+    _cleanupResources();
+    super.dispose();
+  }
+
+  void _cleanupResources() {
+    _videoCheckTimer?.cancel();
+    _obsCheckTimer?.cancel();
     _videoController?.dispose();
     _chewieController?.dispose();
     _messageController.dispose();
     _chatScrollController.dispose();
-    super.dispose();
-  }
 
-  void _stopAllTimers() {
-    _videoCheckTimer?.cancel();
-    _obsCheckTimer?.cancel();
+    // Remove viewer from Firebase when leaving
+    if (_viewerRef != null && !_isStreamerMode) {
+      _viewerRef!.child(widget.currentUser.userId).remove();
+    }
   }
 
   // ===================== APP LIFECYCLE =====================
@@ -85,20 +98,19 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
-      // KHÔNG end live, chỉ pause video preview
         _videoController?.pause();
         break;
       case AppLifecycleState.resumed:
-      // Resume video preview
-        _videoController?.play();
+        if (_videoController?.value.isInitialized == true) {
+          _videoController?.play();
+        }
         break;
-      case AppLifecycleState.detached:
-      case AppLifecycleState.hidden:
+      default:
         break;
     }
   }
 
-  // ===================== KIỂM TRA OBS =====================
+  // ===================== OBS CONNECTION MANAGEMENT =====================
   Future<void> _checkOBSVideo() async {
     if (_isCheckingVideo) return;
 
@@ -115,9 +127,14 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
       await testController.initialize().timeout(
         const Duration(seconds: 8),
         onTimeout: () {
-          throw TimeoutException('Không nhận được tín hiệu');
+          throw TimeoutException('Không nhận được tín hiệu video từ OBS');
         },
       );
+
+      // Verify video is actually playing
+      if (testController.value.hasError) {
+        throw Exception('Video có lỗi: ${testController.value.errorDescription}');
+      }
 
       testController.dispose();
 
@@ -127,16 +144,20 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
         _videoStatus = '✅ Kết nối OBS thành công!';
       });
 
-      _showSuccessSnackBar('Đã nhận tín hiệu video từ OBS');
+      if (!_isLiveSessionActive) {
+        _showSuccessSnackBar('Đã nhận tín hiệu video từ OBS');
+      }
     } catch (e) {
       setState(() {
         _isVideoReady = false;
         _isOBSConnected = false;
-        _videoStatus = '❌ Chưa kết nối được OBS';
+        _videoStatus = e is TimeoutException
+            ? '❌ Không nhận được tín hiệu từ OBS'
+            : '❌ Lỗi kết nối OBS: ${e.toString()}';
       });
 
-      if (e is TimeoutException) {
-        _showErrorSnackBar('Hãy kiểm tra OBS đã bật stream chưa?');
+      if (!_isLiveSessionActive) {
+        _showErrorSnackBar('Không thể kết nối đến OBS. Vui lòng kiểm tra cài đặt.');
       }
     } finally {
       setState(() {
@@ -146,6 +167,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
   }
 
   void _startAutoCheckVideo() {
+    _videoCheckTimer?.cancel();
     _videoCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (!_isVideoReady && !_isCheckingVideo && !_isStreamerMode) {
         _checkOBSVideo();
@@ -153,30 +175,27 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
     });
   }
 
-  // ===================== KIỂM TRA OBS DISCONNECT =====================
   void _startObsConnectionMonitor() {
     _obsCheckTimer?.cancel();
-    _obsCheckTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
+    _obsCheckTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
       if (!_isLiveSessionActive || !_isStreamerMode) {
         timer.cancel();
         return;
       }
 
       try {
-        // Kiểm tra video controller còn chạy không
+        // Check if video is still playing
         if (_videoController != null &&
             _videoController!.value.isInitialized &&
             !_videoController!.value.isPlaying) {
 
-          // Thử resume
+          // Try to restart
           await _videoController!.play();
 
-          // Nếu vẫn không chạy sau 5s
-          await Future.delayed(const Duration(seconds: 5));
+          await Future.delayed(const Duration(seconds: 3));
 
           if (!_videoController!.value.isPlaying) {
-            // OBS đã disconnect
-            print('⚠️ OBS disconnected, auto-ending live');
+            print('⚠️ OBS disconnected detected');
             await _endLiveStream(force: true);
           }
         }
@@ -187,7 +206,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
     });
   }
 
-  // ===================== QUẢN LÝ LIVE STATE =====================
+  // ===================== LIVE STREAM MANAGEMENT =====================
   Future<void> _createOrUpdateStreamItem({bool isLive = true}) async {
     final ref = FirebaseDatabase.instance
         .ref('streamItems/stream_${widget.currentUser.userId}');
@@ -200,8 +219,10 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
       "isLiveNow": isLive,
       "colorHex": "#FF3366",
       "image": widget.currentUser.avatar,
-      "streamTitle": titleController.text,
-      "viewer": "0",
+      "streamTitle": titleController.text.isNotEmpty
+          ? titleController.text
+          : "Live Stream của ${widget.currentUser.name}",
+      "viewer": _liveViewerCount.toString(),
       "followers": widget.currentUser.followers.toString(),
       "coverImage": widget.currentUser.avatar,
       "post": "0",
@@ -214,14 +235,45 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
     await ref.set(streamItem);
   }
 
-  // ===================== BẮT ĐẦU LIVE =====================
+  void _setupLiveViewerCounter() {
+    _viewerRef = FirebaseDatabase.instance
+        .ref('streams/${widget.currentUser.userId}/viewers');
+
+    // Mark current user as viewer
+    final userRef = _viewerRef!.child(widget.currentUser.userId);
+    userRef.set({
+      'joinedAt': ServerValue.timestamp,
+      'name': widget.currentUser.name,
+    });
+
+    userRef.onDisconnect().remove();
+
+    // Listen for viewer count changes
+    _viewerRef!.onValue.listen((event) {
+      if (mounted) {
+        final count = event.snapshot.children.length;
+        if (count != _liveViewerCount) {
+          setState(() {
+            _liveViewerCount = count;
+          });
+
+          // Update viewer count in stream item
+          if (_isLiveSessionActive) {
+            _createOrUpdateStreamItem(isLive: true);
+          }
+        }
+      }
+    });
+  }
+
   Future<void> _startLiveBroadcast() async {
+    // Validation
     if (!_isVideoReady) {
       _showErrorSnackBar('Vui lòng kết nối OBS trước khi bắt đầu');
       return;
     }
 
-    if (titleController.text.isEmpty) {
+    if (titleController.text.trim().isEmpty) {
       _showErrorSnackBar('Hãy nhập tiêu đề cho buổi live');
       return;
     }
@@ -231,19 +283,29 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
       return;
     }
 
-    // Set live state trên server
+    // Stop auto-check timer
+    _videoCheckTimer?.cancel();
+
+    // Set states
     setState(() {
       _isLiveSessionActive = true;
       _isStreamerMode = true;
     });
 
+    // Firebase operations
     await _createOrUpdateStreamItem(isLive: true);
-    _videoCheckTimer?.cancel();
-    _initializeStreamerVideo();
+    _setupLiveViewerCounter();
+
+    // Initialize video player for streamer
+    await _initializeStreamerVideo();
+
+    // Send welcome message
     _sendWelcomeMessage();
+
+    // Start OBS monitoring
     _startObsConnectionMonitor();
 
-    // Lock orientation portrait
+    // Lock orientation
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);
@@ -251,74 +313,62 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
     _showSuccessSnackBar('🎬 LIVE ĐÃ BẮT ĐẦU!');
   }
 
-  void _initializeStreamerVideo() {
+  Future<void> _initializeStreamerVideo() async {
     try {
       _videoController = VideoPlayerController.network(
         widget.currentUser.serverUrl,
       );
 
-      _videoController!.initialize().then((_) {
-        if (!mounted) return;
+      await _videoController!.initialize();
 
-        _chewieController = ChewieController(
-          videoPlayerController: _videoController!,
-          autoPlay: true,
-          looping: true,
-          showControls: true,
-          allowFullScreen: false,
-          aspectRatio: _videoController!.value.aspectRatio,
-          showControlsOnInitialize: true,
-          placeholder: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withOpacity(0.8),
-                  Colors.black.withOpacity(0.4),
-                ],
-              ),
-            ),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(
-                    color: Colors.white,
+      if (!mounted) return;
+
+      _chewieController = ChewieController(
+        videoPlayerController: _videoController!,
+        autoPlay: true,
+        looping: true,
+        showControls: true,
+        allowFullScreen: false,
+        aspectRatio: _videoController!.value.aspectRatio,
+        showControlsOnInitialize: true,
+        placeholder: Container(
+          color: Colors.black,
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const CircularProgressIndicator(
+                  color: Colors.white,
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Đang kết nối với OBS...',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 14,
                   ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Đang kết nối với OBS...',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          autoInitialize: true,
-          allowedScreenSleep: false,
-        );
+        ),
+        autoInitialize: true,
+        allowedScreenSleep: false,
+      );
 
-        setState(() {});
-      }).catchError((error) {
-        print('Error loading stream: $error');
-        _showErrorSnackBar('Lỗi khi tải video stream');
-      });
+      setState(() {});
     } catch (e) {
       _showErrorSnackBar('Lỗi khởi tạo video: $e');
+      await _endLiveStream();
     }
   }
 
-  // ===================== KẾT THÚC LIVE =====================
   Future<void> _endLiveStream({bool force = false}) async {
     if (!_isLiveSessionActive && !force) return;
 
     print('🛑 Ending live stream (force: $force)');
 
-    // Update server state
+    // Update Firebase
     await _createOrUpdateStreamItem(isLive: false);
 
     // Send end message
@@ -328,7 +378,9 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
     );
 
     // Cleanup
-    _stopAllTimers();
+    _cleanupResources();
+
+    // Reset video controllers
     _videoController?.dispose();
     _chewieController?.dispose();
     _videoController = null;
@@ -342,7 +394,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
       DeviceOrientation.landscapeRight,
     ]);
 
-    // Update UI state
+    // Reset state
     if (mounted) {
       setState(() {
         _isLiveSessionActive = false;
@@ -354,11 +406,13 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
       });
     }
 
+    // Restart auto-check for next session
     _startAutoCheckVideo();
+
     _showSuccessSnackBar('Đã kết thúc live stream');
   }
 
-  // ===================== CHAT =====================
+  // ===================== CHAT MANAGEMENT =====================
   void _sendWelcomeMessage() {
     ChatService.sendSystemMessage(
       streamId: widget.currentUser.userId,
@@ -367,19 +421,23 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
   }
 
   Future<void> _sendChatMessage() async {
-    if (_messageController.text.trim().isEmpty) return;
+    final message = _messageController.text.trim();
+    if (message.isEmpty) return;
 
     await ChatService.sendMessage(
       streamId: widget.currentUser.userId,
       userId: widget.currentUser.userId,
       userName: widget.currentUser.name,
       userAvatar: widget.currentUser.avatar,
-      message: _messageController.text.trim(),
+      message: message,
       isStreamer: true,
     );
 
     _messageController.clear();
+    _scrollChatToBottom();
+  }
 
+  void _scrollChatToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_chatScrollController.hasClients) {
         _chatScrollController.animateTo(
@@ -391,18 +449,18 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
     });
   }
 
-  // ===================== GIAO DIỆN STREAMER MODE =====================
+  // ===================== STREAMER UI =====================
   Widget _buildStreamerControlPanel() {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Background Video
+          // Video Background
           Positioned.fill(
             child: _buildVideoPlayer(),
           ),
 
-          // Top Gradient
+          // Gradient Overlays
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -527,6 +585,12 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
               child: Image.network(
                 widget.currentUser.avatar,
                 fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: Colors.grey,
+                    child: const Icon(Icons.person, color: Colors.white),
+                  );
+                },
               ),
             ),
           ),
@@ -696,7 +760,25 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
                     );
                   }
 
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text(
+                        'Lỗi tải tin nhắn',
+                        style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                      ),
+                    );
+                  }
+
                   final messages = snapshot.data ?? [];
+
+                  if (messages.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'Chưa có tin nhắn nào',
+                        style: TextStyle(color: Colors.white.withOpacity(0.5)),
+                      ),
+                    );
+                  }
 
                   return ListView.builder(
                     controller: _chatScrollController,
@@ -745,9 +827,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
                           ),
                           border: InputBorder.none,
                           suffixIcon: IconButton(
-                            onPressed: () {
-                              _sendChatMessage();
-                            },
+                            onPressed: _sendChatMessage,
                             icon: Icon(
                               Icons.send_rounded,
                               color: Colors.white.withOpacity(0.8),
@@ -769,7 +849,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
   }
 
   Widget _buildChatMessage(message) {
-    final isStreamer = message.isStreamer;
+    final isStreamer = message.isStreamer ?? false;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -790,8 +870,14 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
               child: Image.network(
-                message.userAvatar,
+                message.userAvatar ?? widget.currentUser.avatar,
                 fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: Colors.grey,
+                    child: const Icon(Icons.person, color: Colors.white, size: 14),
+                  );
+                },
               ),
             ),
           ),
@@ -820,7 +906,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
                   Row(
                     children: [
                       Text(
-                        message.userName,
+                        message.userName ?? 'Ẩn danh',
                         style: TextStyle(
                           color: isStreamer
                               ? const Color(0xFFFF3366)
@@ -859,7 +945,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    message.message,
+                    message.message ?? '',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,
@@ -875,18 +961,22 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
   }
 
   String _formatTime(int timestamp) {
-    final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    try {
+      final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+      return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return '--:--';
+    }
   }
 
-  // ===================== GIAO DIỆN CHUẨN BỊ =====================
+  // ===================== PREPARATION UI =====================
   Widget _buildPreparationScreen() {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0F),
       body: SafeArea(
         child: Column(
           children: [
-            // Header với gradient
+            // Header
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               decoration: BoxDecoration(
@@ -901,7 +991,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
               ),
               child: Row(
                 children: [
-                  // Avatar và info
+                  // Avatar
                   Container(
                     width: 48,
                     height: 48,
@@ -917,12 +1007,19 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
                       child: Image.network(
                         widget.currentUser.avatar,
                         fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey,
+                            child: const Icon(Icons.person, color: Colors.white),
+                          );
+                        },
                       ),
                     ),
                   ),
 
                   const SizedBox(width: 12),
 
+                  // User Info
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -947,7 +1044,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
                     ),
                   ),
 
-                  // Server info
+                  // Server Info
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
@@ -969,8 +1066,6 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
                 ],
               ),
             ),
-
-            const SizedBox(height: 8),
 
             // Main Content
             Expanded(
@@ -1002,12 +1097,12 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
 
                     const SizedBox(height: 32),
 
-                    // OBS Setup Steps
+                    // Setup Steps
                     _buildSetupSteps(),
 
                     const SizedBox(height: 32),
 
-                    // Video Check Status
+                    // Video Status
                     _buildVideoStatusCard(),
 
                     const SizedBox(height: 32),
@@ -1017,7 +1112,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
 
                     const SizedBox(height: 40),
 
-                    // Start Live Button
+                    // Start Button
                     _buildStartLiveButton(),
                   ],
                 ),
@@ -1044,7 +1139,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
 
         const SizedBox(height: 16),
 
-        // Step 1
+        // Steps
         _buildStepCard(
           number: 1,
           icon: Icons.settings_outlined,
@@ -1056,7 +1151,6 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
 
         const SizedBox(height: 12),
 
-        // Step 2
         _buildStepCard(
           number: 2,
           icon: Icons.play_arrow_rounded,
@@ -1068,7 +1162,6 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
 
         const SizedBox(height: 12),
 
-        // Step 3
         _buildStepCard(
           number: 3,
           icon: Icons.videocam_rounded,
@@ -1099,7 +1192,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
       ),
       child: Row(
         children: [
-          // Number Badge
+          // Number
           Container(
             width: 32,
             height: 32,
@@ -1168,16 +1261,20 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
   Widget _buildVideoStatusCard() {
     Color statusColor = Colors.grey;
     IconData statusIcon = Icons.info_outline;
+    String buttonText = 'Kiểm tra OBS';
 
     if (_isCheckingVideo) {
       statusColor = Colors.blue;
       statusIcon = Icons.refresh;
+      buttonText = 'Đang kiểm tra...';
     } else if (_isVideoReady) {
       statusColor = Colors.green;
       statusIcon = Icons.check_circle;
+      buttonText = '✅ OBS ĐÃ KẾT NỐI';
     } else {
       statusColor = Colors.orange;
       statusIcon = Icons.warning;
+      buttonText = 'Kiểm tra OBS';
     }
 
     return Container(
@@ -1201,7 +1298,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
                       ? (_isCheckingVideo ? 'Đang kiểm tra...' : 'Chưa kiểm tra OBS')
                       : _videoStatus,
                   style: TextStyle(
-                    color: _isVideoReady ? Colors.green : Colors.white,
+                    color: statusColor,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1228,15 +1325,11 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
                 elevation: 0,
               ),
               icon: Icon(
-                _isCheckingVideo
-                    ? Icons.refresh
-                    : (_isVideoReady ? Icons.check : Icons.videocam),
+                _isCheckingVideo ? Icons.refresh : statusIcon,
                 size: 20,
               ),
               label: Text(
-                _isCheckingVideo
-                    ? 'Đang kiểm tra...'
-                    : (_isVideoReady ? '✅ OBS ĐÃ KẾT NỐI' : 'Kiểm tra OBS'),
+                buttonText,
                 style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
@@ -1419,7 +1512,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
     );
   }
 
-  // ===================== TIỆN ÍCH =====================
+  // ===================== UTILITIES =====================
   void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

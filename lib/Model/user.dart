@@ -25,7 +25,7 @@ class User {
       name: json['name'] ?? '',
       email: json['email'] ?? '',
       avatar: json['avatar'] ?? '',
-      serverUrl: json['serverUrl'] ?? "http://192.168.2.249/live/$id.m3u8",
+      serverUrl: json['serverUrl'] ?? "http://192.168.1.5/live/$id.m3u8",
       description: json['description'] ?? '',
       followers: json['followers'] ?? 0,
     );
