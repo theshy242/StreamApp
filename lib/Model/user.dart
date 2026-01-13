@@ -6,7 +6,7 @@ class User {
   final String avatar;
   final String serverUrl; // URL Nginx / RTMP / HLS của user
   final String description;
-  final int followers;
+  final List<String> followers;
 
   User({
     required this.userId,
@@ -20,6 +20,15 @@ class User {
 
   factory User.fromJson(Map<String, dynamic> json) {
     final id = json['userId'] ?? '';
+    List<String> followersList = [];
+
+    if (json['followers'] != null && json['followers'] is Map) {
+      followersList = (json['followers'] as Map)
+          .keys
+          .map((e) => e.toString())
+          .toList();
+    }
+ 
     return User(
       userId: json['userId'] ?? '',
       name: json['name'] ?? '',
@@ -27,9 +36,10 @@ class User {
       avatar: json['avatar'] ?? '',
       serverUrl: json['serverUrl'] ?? "http://192.168.1.5/live/$id.m3u8",
       description: json['description'] ?? '',
-      followers: json['followers'] ?? 0,
+      followers: followersList,
     );
   }
+
   // ================== CÁC HÀM SỬA TRƯỜNG GIÁ TRỊ ==================
 
   // 1. Sửa URL server của tất cả users
@@ -70,38 +80,25 @@ class User {
     }
   }
 
-  // 2. Sửa followers của tất cả users
-  static Future<void> updateAllFollowers(int newFollowerCount) async {
-    try {
-      print('🔄 Bắt đầu cập nhật followers...');
-      final database = FirebaseDatabase.instance;
-      final usersRef = database.ref('users');
+  // 2. Follow/Unfollow
+  static Future<void> followUser({
+    required String streamerId,
+    required String followerId,
+  }) async {
+    final ref = FirebaseDatabase.instance
+        .ref('users/$streamerId/followers/$followerId');
 
-      final snapshot = await usersRef.get();
+    await ref.set(true);
+  }
 
-      if (snapshot.exists) {
-        Map<dynamic, dynamic> users = snapshot.value as Map<dynamic, dynamic>;
-        int updatedCount = 0;
+  static Future<void> unfollowUser({
+    required String streamerId,
+    required String followerId,
+  }) async {
+    final ref = FirebaseDatabase.instance
+        .ref('users/$streamerId/followers/$followerId');
 
-        for (var entry in users.entries) {
-          final userId = entry.key.toString();
-
-          await usersRef.child(userId).update({
-            'followers': newFollowerCount
-          });
-
-          print('✅ Đã cập nhật followers cho $userId: $newFollowerCount');
-          updatedCount++;
-
-          await Future.delayed(const Duration(milliseconds: 100));
-        }
-
-        print('🎉 Đã cập nhật followers cho $updatedCount users!');
-      }
-    } catch (e) {
-      print('❌ Lỗi khi cập nhật followers: $e');
-      rethrow;
-    }
+    await ref.remove();
   }
 
   // 3. Sửa description của tất cả users
@@ -253,7 +250,9 @@ class User {
       'avatar': avatar,
       'serverUrl': serverUrl,
       'description': description,
-      'followers': followers,
+      'followers': {
+        for (final uid in followers) uid: true,
+      },
     };
   }
 }

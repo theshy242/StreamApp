@@ -30,7 +30,7 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
   final Random _random = Random();
   String? _serverError;
-  String _serverIp = '192.168.3.220'; // ĐỔI IP CỦA BẠN Ở ĐÂY
+  String _serverIp = '192.168.1.8'; // ĐỔI IP CỦA BẠN Ở ĐÂY
 
   // 🔹 Danh sách API avatar
   final List<String> _avatarAPIs = [

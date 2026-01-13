@@ -8,6 +8,8 @@ import 'package:untitled5/Model/ChatService.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 
+import '../Notification/notification_service.dart';
+
 class LivePrepareScreen extends StatefulWidget {
   final User currentUser;
 
@@ -113,7 +115,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
   // ===================== OBS CONNECTION MANAGEMENT =====================
   Future<void> _checkOBSVideo() async {
     if (_isCheckingVideo) return;
-
+    debugPrint("🎯 CHECK OBS URL = ${widget.currentUser.serverUrl}");
     setState(() {
       _isCheckingVideo = true;
       _videoStatus = '🔍 Đang kiểm tra OBS...';
@@ -294,6 +296,13 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
 
     // Firebase operations
     await _createOrUpdateStreamItem(isLive: true);
+    await NotificationService.sendLiveStartNotification(
+      streamerId: widget.currentUser.userId,
+      streamerName: widget.currentUser.name,
+      streamerAvatar: widget.currentUser.avatar,
+      streamTitle: titleController.text,
+      followerIds: widget.currentUser.followers,
+    );
     _setupLiveViewerCounter();
 
     // Initialize video player for streamer

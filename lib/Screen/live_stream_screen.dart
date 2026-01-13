@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:flutter/material.dart';
 import '../Model/model.dart';
 import 'profile_detail_screen.dart';
@@ -25,9 +26,9 @@ enum VideoQuality {
 
 class LiveStreamScreen extends StatefulWidget {
   final StreamItem streamItem;
-  final User user;
+  final User currentUser;
 
-  LiveStreamScreen({super.key, required this.streamItem, required this.user});
+  LiveStreamScreen({super.key, required this.streamItem, required this.currentUser});
 
   @override
   State<StatefulWidget> createState() {
@@ -89,12 +90,29 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
   @override
   void initState() {
     super.initState();
+    _checkIfFollowing();
     _initializeVideoPlayer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _sendWelcomeMessage();
       _setupLiveViewerCounter();
     });
   }
+
+  void _checkIfFollowing() async {
+    final currentUserId = widget.currentUser.userId;
+    final streamerId = widget.streamItem.userId;
+
+    final snapshot = await FirebaseDatabase.instance
+        .ref("users/$streamerId/followers/$currentUserId")
+        .get();
+
+    if (mounted) {
+      setState(() {
+        _isFollowing = snapshot.exists;
+      });
+    }
+  }
+
 
   void _initializeVideoPlayer() {
     String videoUrl = _getVideoUrlBasedOnQuality();
@@ -152,7 +170,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     });
   }
   String _getVideoUrlBasedOnQuality() {
-    String baseUrl = widget.user.serverUrl;
+    String baseUrl = widget.streamItem.url;
 
     // Nếu server URL không phải là HLS (.m3u8), thì không thể thay đổi chất lượng
     if (!baseUrl.contains('.m3u8')) {
@@ -342,7 +360,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
   void _sendWelcomeMessage() {
     ChatService.sendSystemMessage(
       streamId: widget.streamItem.name,
-      message: "🌟 ${widget.user.name} đã bắt đầu live stream!",
+      message: "🌟 ${widget.currentUser.name} đã bắt đầu live stream!",
     );
   }
 
@@ -351,7 +369,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
         .ref('streams/${widget.streamItem.name}/viewers');
 
     // Tạo child cho từng user
-    final userRef = viewerRef.child(widget.user.userId);
+    final userRef = viewerRef.child(widget.currentUser.userId);
     userRef.set(true); // user online
     userRef.onDisconnect().remove(); // khi disconnect Firebase tự remove
 
@@ -370,9 +388,9 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
 
     await ChatService.sendMessage(
       streamId: widget.streamItem.name,
-      userId: widget.user.userId,
-      userName: widget.user.name,
-      userAvatar: widget.user.avatar,
+      userId: widget.currentUser.userId,
+      userName: widget.currentUser.name,
+      userAvatar: widget.currentUser.avatar,
       message: _messageController.text.trim(),
       isStreamer: true,
     );
@@ -405,19 +423,51 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     });
   }
 
-  void _toggleFollow() {
-    setState(() {
-      _isFollowing = !_isFollowing;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_isFollowing
-            ? "✅ Đã theo dõi ${widget.streamItem.name}!"
-            : "❌ Đã bỏ theo dõi"),
-        backgroundColor: _isFollowing ? Colors.green : Colors.red,
-      ),
-    );
+  void _toggleFollow() async {
+    final currentUserId = widget.currentUser.userId; // user14
+    final streamerId = widget.streamItem.userId;     // user15
+
+    print("👉 FOLLOW CLICK");
+    print("👤 currentUserId = $currentUserId");
+    print("🎥 streamerId = $streamerId");
+
+    // ❌ Không cho follow chính mình
+    if (currentUserId == streamerId) {
+      print("❌ FOLLOW SELF - BLOCKED");
+      return;
+    }
+
+    final followerRef = FirebaseDatabase.instance
+        .ref("users/$streamerId/followers/$currentUserId");
+
+    try {
+      if (_isFollowing) {
+        await followerRef.remove();
+        print("➖ UNFOLLOW");
+      } else {
+        await followerRef.set(true);
+        print("➕ FOLLOW");
+      }
+
+      setState(() {
+        _isFollowing = !_isFollowing;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isFollowing
+                ? "✅ Đã theo dõi ${widget.streamItem.name}"
+                : "❌ Đã bỏ theo dõi",
+          ),
+        ),
+      );
+    } catch (e) {
+      print("❌ Follow error: $e");
+    }
   }
+
+
 
   Widget _buildChatListView() {
     return StreamBuilder(

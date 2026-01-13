@@ -82,9 +82,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           "name": _getNameFromEmail(user.email ?? ""),
           "email": user.email ?? "",
           "avatar": "https://cdn-icons-png.flaticon.com/512/1144/1144760.png",
-          "serverUrl": "192.168.3.220",
+          "serverUrl": "rtmp://192.168.1.8/live/$streamKey",
           "description": "",
-          "followers": 0,
+          "followers": {},
           "createdAt": DateTime.now().millisecondsSinceEpoch,
           "streamKey": streamKey,     // streamKey = userId
         });
