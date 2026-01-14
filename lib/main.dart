@@ -36,7 +36,7 @@ Future<void> updateAllUsersServerUrl() async {
   for (final entry in users.entries) {
     final userId = entry.key.toString();
 
-    final newServerUrl = "http://192.168.3.72/live/$userId/index.m3u8";
+    final newServerUrl = "http://192.168.1.14/live/$userId/index_720p.m3u8";
 
     await ref.child(userId).update({
       'serverUrl': newServerUrl,

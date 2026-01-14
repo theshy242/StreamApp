@@ -152,26 +152,22 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     });
   }
   String _getVideoUrlBasedOnQuality() {
-    String baseUrl = widget.user.serverUrl;
+    final userId = widget.user.userId;
+    final basePath = "http://192.168.1.14/live/$userId";
 
-    // Nếu server URL không phải là HLS (.m3u8), thì không thể thay đổi chất lượng
-    if (!baseUrl.contains('.m3u8')) {
-      return baseUrl;
-    }
-
-    // Logic đơn giản: thêm suffix cho chất lượng
     switch (_currentQuality) {
       case VideoQuality.high:
-        return baseUrl.replaceFirst('.m3u8', '_1080p.m3u8');
+        return "$basePath/index_1080p.m3u8";
       case VideoQuality.medium:
-        return baseUrl.replaceFirst('.m3u8', '_720p.m3u8');
+        return "$basePath/index_720p.m3u8";
       case VideoQuality.low:
-        return baseUrl.replaceFirst('.m3u8', '_480p.m3u8');
+        return "$basePath/index_480p.m3u8";
       case VideoQuality.auto:
       default:
-        return baseUrl; // Master playlist
+        return "$basePath/index_720p.m3u8"; // auto tạm thời
     }
   }
+
 
   void _fallbackToLowerQuality() {
     if (_currentQuality == VideoQuality.high) {

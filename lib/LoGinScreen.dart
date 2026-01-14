@@ -14,20 +14,21 @@ class LoginScreenb extends StatefulWidget {
 }
 
 
-  final _emailController = TextEditingController();
+
 
 class _LoginScreenState extends State<LoginScreenb>
     with SingleTickerProviderStateMixin {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _loading = false;
+  late TextEditingController _emailController;
 
   late AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-
+    _emailController = TextEditingController();
     // Animation controller cho logo glow & pulse
     _controller = AnimationController(
       vsync: this,

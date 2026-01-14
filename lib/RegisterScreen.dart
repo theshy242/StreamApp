@@ -82,7 +82,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           "name": _getNameFromEmail(user.email ?? ""),
           "email": user.email ?? "",
           "avatar": "https://cdn-icons-png.flaticon.com/512/1144/1144760.png",
-          "serverUrl": "192.168.3.72",
+          "serverUrl": "http://192.168.1.14/live/$userId/index_720p.m3u8",
           "description": "",
           "followers": 0,
           "createdAt": DateTime.now().millisecondsSinceEpoch,
