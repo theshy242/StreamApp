@@ -29,7 +29,8 @@ class StreamItem {
     required this.post,
     required this.following,
     required this.description,
-    required this.userId,      // ⭐
+    required this.userId,
+    // ⭐
   });
 
   factory StreamItem.fromJson(Map<String, dynamic> json) {

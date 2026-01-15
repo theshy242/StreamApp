@@ -7,7 +7,8 @@
       import 'package:untitled5/Screen/UserInfor.dart';
       import '../AI_Chat/chat_screen.dart';
       import '../Constants/colors.dart';
-      import 'live_stream_screen.dart';
+      import '../Notification/notification_screen.dart';
+import 'live_stream_screen.dart';
       import 'profile_detail_screen.dart';
       import 'package:untitled5/Model/StreamCategory.dart';
       import 'package:untitled5/Model/model.dart';
@@ -436,7 +437,33 @@
                 ),
                 _buildIconButton(Icons.search),
                 const SizedBox(width: 15),
-                _buildIconButton(Icons.notifications_outlined),
+                IconButton(
+                  icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                  onPressed: () async {
+                    final user = await _findCurrentUser();
+
+                    if (user == null) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Vui lòng đăng nhập để xem thông báo"),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                      return;
+                    }
+
+                    if (!mounted) return;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => NotificationScreen(
+                          currentUser: user, //
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
           );
@@ -650,36 +677,32 @@
                 return GestureDetector(
                   onTap: () async {
                     try {
-                      final userSnapshot = await usersDbRef.child(item.userId).get();
-                      if (userSnapshot.exists) {
-                        final userData = Map<String, dynamic>.from(userSnapshot.value as Map);
-                        final user = User.fromJson(userData);
+                      // ✅ LẤY USER ĐANG ĐĂNG NHẬP
+                      final currentUser = await _findCurrentUser();
 
-                        if (!mounted) return;
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => LiveStreamScreen(
-                              streamItem: item,
-                              user: user,
-                            ),
-                          ),
-                        );
-                      } else {
+                      if (currentUser == null) {
                         if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text("User not found"),
+                            content: Text("Vui lòng đăng nhập"),
                             backgroundColor: Colors.orange,
                           ),
                         );
+                        return;
                       }
-                    } catch (e) {
-                      print('❌ Error loading user: $e');
+
                       if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Error: $e")),
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => LiveStreamScreen(
+                            streamItem: item,          // streamer
+                            currentUser: currentUser,  // viewer
+                          ),
+                        ),
                       );
+                    } catch (e) {
+                      print('❌ Error opening stream: $e');
                     }
                   },
                   child: Card(

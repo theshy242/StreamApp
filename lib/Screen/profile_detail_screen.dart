@@ -343,7 +343,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
         name: widget.streamItem.name,
         email: "${widget.streamItem.name.toLowerCase().replaceAll(' ', '')}@example.com",
         avatar: widget.streamItem.image,
-        followers: _parseNumber(widget.streamItem.followers),
+        followers: <String>[],
         serverUrl: widget.streamItem.url,
         description: widget.streamItem.description,
       );
@@ -371,7 +371,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
       MaterialPageRoute(
         builder: (context) => LiveStreamScreen(
           streamItem: widget.streamItem,
-          user: currentUser!,
+          currentUser: currentUser!,
         ),
       ),
     );
