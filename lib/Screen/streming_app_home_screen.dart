@@ -435,7 +435,6 @@ import 'live_stream_screen.dart';
                     ),
                   ),
                 ),
-                _buildIconButton(Icons.search),
                 const SizedBox(width: 15),
                 IconButton(
                   icon: const Icon(Icons.notifications_outlined, color: Colors.white),
@@ -859,14 +858,6 @@ import 'live_stream_screen.dart';
                   ),
                 ),
 
-                // CHAT
-                Expanded(
-                  child: IconButton(
-                    onPressed: () {},
-                    icon: const Icon(Icons.chat_bubble_outline,
-                        color: Colors.white60, size: 26),
-                  ),
-                ),
 
                 // 🔴 LIVE — NẰM CHUNG HÀNG
                 Expanded(
@@ -910,14 +901,6 @@ import 'live_stream_screen.dart';
                   ),
                 ),
 
-                // FAVORITE
-                Expanded(
-                  child: IconButton(
-                    onPressed: () {},
-                    icon: const Icon(Icons.favorite_border,
-                        color: Colors.white60, size: 26),
-                  ),
-                ),
 
                 // PROFILE
                 Expanded(

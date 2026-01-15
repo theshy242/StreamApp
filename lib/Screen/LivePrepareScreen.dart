@@ -51,7 +51,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
   bool _showChat = true;
 
   final List<String> categories = [
-    "Gaming", "Music", "Sports", "Just Chatting", "Popular"
+    "Gaming", "Music", "Sports", "Popular"
   ];
 
   @override
@@ -216,7 +216,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
     final streamItem = {
       "userId": widget.currentUser.userId,
       "name": widget.currentUser.name,
-      "category": selectedCategory ?? "Just Chatting",
+      "category": selectedCategory ??"Popular",
       "url": widget.currentUser.serverUrl,
       "isLiveNow": isLive,
       "colorHex": "#FF3366",

@@ -179,7 +179,7 @@ class _LoginScreenState extends State<LoginScreenb>
                           Navigator.push(context,
                               MaterialPageRoute(builder: (_) => RegisterScreen()));
                         },
-                        child: const Text("Đăng ký",style: TextStyle(color: Colors.pink),),
+                        child: const Text("Đăng ký",style: TextStyle(color: Colors.pink,fontWeight: FontWeight.bold),),
                       ),
                     ],
                   ),
@@ -220,21 +220,8 @@ class _LoginScreenState extends State<LoginScreenb>
                   ),
                   const SizedBox(height: 24),
 
-                  const Center(
-                    child: Text(
-                      "Hoặc đăng nhập với",
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _socialButton(Icons.g_mobiledata, Colors.red),
-                      _socialButton(Icons.facebook, Colors.blue),
-                      _socialButton(Icons.apple, Colors.white),
-                    ],
-                  ),
+
+
                 ],
               ),
             ),

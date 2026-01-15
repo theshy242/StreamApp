@@ -83,7 +83,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           "email": user.email ?? "",
           "avatar": "https://cdn-icons-png.flaticon.com/512/1144/1144760.png",
 
-          "serverUrl": "http://192.168.1.14/live/$userId/index_720p.m3u8",
+          "serverUrl": "http://172.16.12.54/live/$userId/index_720p.m3u8",
 
           "description": "",
           "followers": {},
