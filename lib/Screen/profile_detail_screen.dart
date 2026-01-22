@@ -33,7 +33,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
   List<Map<String, dynamic>> _serverVodList = [];
   bool _isLoadingServerVODs = true;
   String? _serverError;
-  String _serverIp = '172.16.12.91'; // THAY ĐỔI IP CỦA BẠN Ở ĐÂY
+  String _serverIp = '192.168.3.220'; // THAY ĐỔI IP CỦA BẠN Ở ĐÂY
 
   // Database reference - GIỐNG NHƯ HOME SCREEN
   static FirebaseDatabase? _database;
@@ -954,11 +954,11 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
     );
   }
 
-  // ========== CÁC PHẦN GIỮ NGUYÊN ==========
   Widget _buildHeaderSection(Size size) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
+        // Cover image
         Container(
           height: size.height * 0.3,
           width: double.infinity,
@@ -973,6 +973,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
           ),
         ),
 
+        // Back button và More button
         Positioned(
           top: 40,
           left: 15,
@@ -1003,8 +1004,9 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
           ),
         ),
 
+        // Avatar - DI CHUYỂN XUỐNG DƯỚI
         Positioned(
-          bottom: -50,
+          bottom: -60, // Thay đổi từ -50 thành -60 để có khoảng cách
           left: 20,
           child: Container(
             decoration: BoxDecoration(
@@ -1017,28 +1019,27 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
               backgroundImage: widget.streamItem.image.isNotEmpty
                   ? NetworkImage(widget.streamItem.image)
                   : null,
+              child: widget.streamItem.image.isEmpty
+                  ? const Icon(
+                Icons.person,
+                color: Colors.white54,
+                size: 40,
+              )
+                  : null,
             ),
           ),
         ),
 
+        // Tên và username - ĐIỀU CHỈNH VỊ TRÍ VÀ THÊM KHOẢNG CÁCH
         Positioned(
-          bottom: -45,
+          bottom: -30, // Thay đổi từ -45 thành -30
           left: 140,
           right: 20,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                widget.streamItem.name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
+
+              const SizedBox(height: 8), // Thêm khoảng cách giữa tên và username
               Text(
                 "@${widget.streamItem.name.toLowerCase().replaceAll(' ', '')}",
                 style: const TextStyle(
@@ -1052,8 +1053,9 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
           ),
         ),
 
+        // Follow button - ĐIỀU CHỈNH VỊ TRÍ
         Positioned(
-          bottom: -40,
+          bottom: -25, // Thay đổi từ -40 thành -25
           right: 20,
           child: GestureDetector(
             onTap: () {
@@ -1086,7 +1088,6 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
       ],
     );
   }
-
   Widget _buildDescriptionSection() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),

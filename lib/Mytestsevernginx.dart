@@ -17,7 +17,7 @@ class _LiveStreamPageState extends State<LiveStreamPage> {
   void initState() {
     super.initState();
     _videoController = VideoPlayerController.network(
-      'http://192.168.2.249/live/test1.m3u8',
+      'http://192.168.3.220/live/index_1.m3u8',
     );
 
     _videoController.addListener(() {
