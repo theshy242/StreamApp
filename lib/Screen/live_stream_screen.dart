@@ -169,19 +169,20 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
       _fallbackToLowerQuality();
     });
   }
+
   String _getVideoUrlBasedOnQuality() {
     final userId = widget.streamItem.userId;
-    final basePath = "http://192.168.1.14/live/$userId";
+    final basePath = "http://192.168.3.220/live/$userId";
 
     switch (_currentQuality) {
       case VideoQuality.high:
-        return "$basePath/index_1080p.m3u8";
+        return "$basePath/index_0.m3u8";
       case VideoQuality.medium:
-        return "$basePath/index_720p.m3u8";
+        return "$basePath/index_1.m3u8";
       case VideoQuality.low:
-        return "$basePath/index_480p.m3u8";
+        return "$basePath/index_2.m3u8";
       default:
-        return "$basePath/index_720p.m3u8";
+        return "$basePath/index_1.m3u8";
     }
   }
 
@@ -203,9 +204,9 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     try {
       // Dispose controllers cũ (KHÔNG DÙNG AWAIT VỚI dispose())
       if (_chewieController != null) {
-        _chewieController!.dispose();  // ← SỬA: bỏ await
+        _chewieController!.dispose(); // ← SỬA: bỏ await
       }
-      _videoController.dispose();       // ← SỬA: bỏ await
+      _videoController.dispose(); // ← SỬA: bỏ await
 
       // Cập nhật state
       setState(() {
@@ -257,7 +258,8 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
               // Header
               Row(
                 children: [
-                  const Icon(Icons.video_settings, color: Colors.purpleAccent, size: 24),
+                  const Icon(Icons.video_settings, color: Colors.purpleAccent,
+                      size: 24),
                   const SizedBox(width: 12),
                   const Text(
                     'Chọn chất lượng video',
@@ -298,7 +300,8 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
                     quality.name,
                     style: TextStyle(
                       color: isSelected ? Colors.white : Colors.white70,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight
+                          .normal,
                     ),
                   ),
                   subtitle: Text(
@@ -329,7 +332,8 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                    const Icon(
+                        Icons.info_outline, color: Colors.blue, size: 16),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -378,7 +382,9 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
   }
 
   Future<void> _sendChatMessage() async {
-    if (_messageController.text.trim().isEmpty) return;
+    if (_messageController.text
+        .trim()
+        .isEmpty) return;
 
     await ChatService.sendMessage(
       streamId: widget.streamItem.name,
@@ -412,14 +418,17 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     setState(() {
       _isChatExpanded = !_isChatExpanded;
       _chatPanelHeight = _isChatExpanded
-          ? MediaQuery.of(context).size.height * 0.5
+          ? MediaQuery
+          .of(context)
+          .size
+          .height * 0.5
           : 220;
     });
   }
 
   void _toggleFollow() async {
     final currentUserId = widget.currentUser.userId; // user14
-    final streamerId = widget.streamItem.userId;     // user15
+    final streamerId = widget.streamItem.userId; // user15
 
     print("👉 FOLLOW CLICK");
     print("👤 currentUserId = $currentUserId");
@@ -462,7 +471,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
   }
 
 
-
+  // === CHỈ SỬA HÀM NÀY ===
   Widget _buildChatListView() {
     return StreamBuilder(
       stream: ChatService.getStreamMessages(widget.streamItem.name),
@@ -482,22 +491,39 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
 
         final messages = snapshot.data ?? [];
 
+        // TỐI ƯU: Thêm cacheExtent và key cho ListView.builder
         return ListView.builder(
           controller: _chatScrollController,
+          physics: const BouncingScrollPhysics(),
+          // Mượt hơn
           shrinkWrap: true,
           padding: const EdgeInsets.only(bottom: 10),
           itemCount: messages.length,
+          cacheExtent: 400,
+          // Pre-render 400px trước/sau viewport
+          addAutomaticKeepAlives: true,
+          // Giữ trạng thái các item đã load
+          addRepaintBoundaries: true,
+          // Tách biệt repaint giữa các item
           itemBuilder: (context, index) {
             final message = messages[index];
-            return _buildSingleChatMessage(message);
+
+            // TỐI ƯU: Sử dụng ValueKey để Flutter tái sử dụng widget
+            return _buildSingleChatMessage(
+              message,
+              key: ValueKey('msg_${message.timestamp}_${index}'), // Key unique
+            );
           },
         );
       },
     );
   }
 
-  Widget _buildSingleChatMessage(message) {
+// === CHỈ SỬA HÀM NÀY ===
+  Widget _buildSingleChatMessage(message, {Key? key}) {
     return Container(
+      key: key,
+      // Thêm key vào đây
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -581,7 +607,9 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
 
   String _formatTime(int timestamp) {
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    return '${date.hour.toString().padLeft(2, '0')}:${date.minute
+        .toString()
+        .padLeft(2, '0')}';
   }
 
   @override
@@ -605,7 +633,6 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
   Widget _buildCorrectedVideoPlayer() {
     if (_chewieController != null &&
         _chewieController!.videoPlayerController.value.isInitialized) {
-
       final videoAspectRatio = _videoController.value.aspectRatio;
 
       return Stack(
@@ -742,14 +769,14 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
             bottom: 0,
             left: 0,
             right: 0,
-            height: 100,
+            height: 120,
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
                   colors: [
-                    Colors.black.withOpacity(0.7),
+                    Colors.black.withOpacity(0.9),
                     Colors.transparent,
                   ],
                 ),
@@ -830,25 +857,6 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
 
                     const Spacer(),
 
-                    // Nút chất lượng video
-                    GestureDetector(
-                      onTap: _showQualitySelector,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          _currentQuality.icon,
-                          color: _currentQuality.color,
-                          size: 20,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(width: 10),
-
                     // Nút Follow
                     GestureDetector(
                       onTap: _toggleFollow,
@@ -896,36 +904,14 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
             ),
           ),
 
-          // TIÊU ĐỀ STREAM - Di chuyển xuống dưới header
-          Positioned(
-            top: 80,
-            left: 15,
-            right: 15,
-            child: Text(
-              widget.streamItem.streamTitle,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                shadows: [
-                  Shadow(
-                    blurRadius: 4,
-                    color: Colors.black,
-                    offset: Offset(1, 1),
-                  ),
-                ],
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
 
-          // PANEL CHAT - Hiển thị bên dưới video
+
+          // PANEL CHAT - Chỉ hiển thị phần tin nhắn, KHÔNG có input
           if (_showChat)
             Positioned(
               left: 10,
               right: 10,
-              bottom: 20,
+              bottom: 140, // Để chừa chỗ cho input chat và nút chất lượng
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
                 height: _chatPanelHeight,
@@ -942,13 +928,14 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
                 ),
                 child: Column(
                   children: [
+                    // Header chat panel
                     GestureDetector(
                       onTap: _toggleChatExpand,
                       onVerticalDragUpdate: (details) {
                         setState(() {
                           final newHeight = _chatPanelHeight - details.delta.dy;
                           _chatPanelHeight = newHeight.clamp(
-                              150, MediaQuery.of(context).size.height * 0.6);
+                              150, MediaQuery.of(context).size.height * 0.5);
                           _isChatExpanded = _chatPanelHeight > 250;
                         });
                       },
@@ -999,6 +986,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
                       ),
                     ),
 
+                    // Danh sách chat
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
@@ -1006,104 +994,133 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
                         child: _buildChatListView(),
                       ),
                     ),
-
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.9),
-                        borderRadius: const BorderRadius.only(
-                          bottomLeft: Radius.circular(16),
-                          bottomRight: Radius.circular(16),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white10,
-                                borderRadius: BorderRadius.circular(25),
-                              ),
-                              child: TextField(
-                                controller: _messageController,
-                                decoration: InputDecoration(
-                                  hintText: "Nhắn tin...",
-                                  hintStyle:
-                                  const TextStyle(color: Colors.white54),
-                                  border: InputBorder.none,
-                                  contentPadding:
-                                  const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 12),
-                                  suffixIcon: IconButton(
-                                    icon: const Icon(
-                                        Icons.emoji_emotions_outlined,
-                                        color: Colors.white70,
-                                        size: 20),
-                                    onPressed: () {},
-                                  ),
-                                ),
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 14),
-                                onSubmitted: (_) => _sendChatMessage(),
-                                maxLines: 1,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: _sendChatMessage,
-                            child: Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Colors.purpleAccent,
-                                    Colors.blueAccent
-                                  ],
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.send,
-                                color: Colors.white,
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
                 ),
               ),
             ),
 
-          // CÁC NÚT ACTION BÊN PHẢI - Di chuyển lên trên panel chat
+          // NÚT CHẤT LƯỢNG VIDEO - Nằm trên thanh input chat
           Positioned(
-            bottom: _showChat ? (_chatPanelHeight + 30) : 120,
+            bottom: 90, // Ngay trên input chat
             right: 15,
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                children: [
-                  widget._buildActionButton(
-                    icon: Icons.favorite_border,
-                    label: widget.streamItem.followers,
-                    onTap: () {},
+            child: GestureDetector(
+              onTap: _showQualitySelector,
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: _currentQuality.color,
+                    width: 2,
                   ),
-                  const SizedBox(height: 15),
-                  widget._buildActionButton(
-                    icon: _showChat
-                        ? Icons.chat_bubble
-                        : Icons.chat_bubble_outline,
-                    label: "Chat",
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.5),
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  _currentQuality.icon,
+                  color: _currentQuality.color,
+                  size: 22,
+                ),
+              ),
+            ),
+          ),
+
+          // THANH INPUT CHAT - Nằm dưới cùng
+          Positioned(
+            bottom: 20,
+            left: 10,
+            right: 10,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.85),
+                borderRadius: BorderRadius.circular(25),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.5),
+                    blurRadius: 15,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  // Nút ẩn/hiện chat
+                  GestureDetector(
                     onTap: _toggleChatVisibility,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _showChat ? Icons.chat : Icons.chat_outlined,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
                   ),
 
+                  const SizedBox(width: 10),
+
+                  // Input text
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      child: TextField(
+                        controller: _messageController,
+                        decoration: InputDecoration(
+                          hintText: "Nhắn tin...",
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          suffixIcon: IconButton(
+                            icon: const Icon(
+                              Icons.emoji_emotions_outlined,
+                              color: Colors.white70,
+                              size: 20,
+                            ),
+                            onPressed: () {},
+                          ),
+                        ),
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        onSubmitted: (_) => _sendChatMessage(),
+                        maxLines: 1,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  // Nút gửi
+                  GestureDetector(
+                    onTap: _sendChatMessage,
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [Colors.purpleAccent, Colors.blueAccent],
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.send,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
