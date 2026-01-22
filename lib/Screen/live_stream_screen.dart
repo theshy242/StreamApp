@@ -171,17 +171,17 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
   }
   String _getVideoUrlBasedOnQuality() {
     final userId = widget.streamItem.userId;
-    final basePath = "http://192.168.1.14/live/$userId";
+    final basePath = "http://172.16.12.91/live/$userId";
 
     switch (_currentQuality) {
       case VideoQuality.high:
-        return "$basePath/index_1080p.m3u8";
+        return "$basePath/index_0.m3u8";
       case VideoQuality.medium:
-        return "$basePath/index_720p.m3u8";
+        return "$basePath/index_1.m3u8";
       case VideoQuality.low:
-        return "$basePath/index_480p.m3u8";
+        return "$basePath/index_2.m3u8";
       default:
-        return "$basePath/index_720p.m3u8";
+        return "$basePath/index_1.m3u8";
     }
   }
 
