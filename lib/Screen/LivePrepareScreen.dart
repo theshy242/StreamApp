@@ -374,27 +374,21 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
 
   Future<void> _endLiveStream({bool force = false}) async {
     if (!_isLiveSessionActive && !force) return;
-
     print('🛑 Ending live stream (force: $force)');
-
     // Update Firebase
     await _createOrUpdateStreamItem(isLive: false);
-
     // Send end message
     ChatService.sendSystemMessage(
       streamId: widget.currentUser.userId,
       message: "🔴 ${widget.currentUser.name} đã kết thúc live stream",
     );
-
     // Cleanup
     _cleanupResources();
-
     // Reset video controllers
     _videoController?.dispose();
     _chewieController?.dispose();
     _videoController = null;
     _chewieController = null;
-
     // Reset orientation
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -402,7 +396,6 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-
     // Reset state
     if (mounted) {
       setState(() {
