@@ -83,7 +83,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           "email": user.email ?? "",
           "avatar": "https://cdn-icons-png.flaticon.com/512/1144/1144760.png",
 
-          "serverUrl": "http://192.168.3.220/live/$userId/index_1.m3u8",
+          "serverUrl": "http://172.16.12.118/live/$userId/index_1.m3u8",
 
           "description": "",
           "followers": {},
@@ -91,13 +91,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
           "streamKey": streamKey,     // streamKey = userId
         });
 
-        print('✅ Đã tạo user: $userId (Firebase UID: ${user.uid})');
+        print(' Đã tạo user: $userId (Firebase UID: ${user.uid})');
       }
 
       setState(() => _loading = false);
 
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Đăng ký thành công ✅")));
+          .showSnackBar(const SnackBar(content: Text("Đăng ký thành công ")));
 
       Navigator.pushReplacement(
         context,

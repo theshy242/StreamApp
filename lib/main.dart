@@ -4,17 +4,12 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:untitled5/Model/user.dart';
 import 'package:untitled5/SplashScreen.dart';
 import 'LoGinScreen.dart';
-
 import 'firebase_options.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-
-
 Future<void> main() async {
-  // Bắt buộc để đảm bảo Flutter khởi tạo trước khi gọi Firebase
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
-  // Khởi tạo Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -37,7 +32,7 @@ Future<void> updateAllUsersServerUrl() async {
     final userId = entry.key.toString();
 
 
-    final newServerUrl = "http://192.168.3.220/live/$userId/index_1.m3u8";
+    final newServerUrl = "http://172.16.12.118/live/$userId/index_1.m3u8";
 
 
     await ref.child(userId).update({
@@ -46,7 +41,7 @@ Future<void> updateAllUsersServerUrl() async {
 
     print('✅ $userId → $newServerUrl');
 
-    // tránh spam Firebase
+
     await Future.delayed(const Duration(milliseconds: 80));
   }
 
@@ -67,8 +62,8 @@ class MyApp extends StatelessWidget {
       home:  LoginScreenb(),
 
       routes: {
+
         '/login': (context) => LoginScreenb(), // màn hình login
-         // nếu cần
       },
     );
   }

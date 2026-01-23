@@ -61,21 +61,26 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  decoration:
-                  const InputDecoration(hintText: "Hỏi AI..."),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20,left: 20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    decoration: const InputDecoration(
+                      hintText: "Hỏi AI...",
+                    ),
+                  ),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.send),
-                onPressed: _send,
-              )
-            ],
-          )
+                IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: _send,
+                ),
+              ],
+            ),
+          ),
+
         ],
       ),
     );

@@ -13,6 +13,7 @@ import '../Notification/notification_service.dart';
 class LivePrepareScreen extends StatefulWidget {
   final User currentUser;
 
+
   const LivePrepareScreen({super.key, required this.currentUser});
 
   @override
@@ -91,6 +92,11 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
       _viewerRef!.child(widget.currentUser.userId).remove();
     }
   }
+  String get displayStreamUrl {
+    return widget.currentUser.serverUrl
+        .replaceAll(RegExp(r'/index.*\.m3u8$'), '');
+  }
+
 
   // ===================== APP LIFECYCLE =====================
   @override
@@ -1154,7 +1160,7 @@ class _LivePrepareScreenState extends State<LivePrepareScreen>
           icon: Icons.settings_outlined,
           title: 'Cấu hình OBS Studio',
           description: 'Settings → Stream → Server URL\n'
-              'Điền: ${widget.currentUser.serverUrl}',
+              'Điền: ${displayStreamUrl}',
           color: const Color(0xFF4361EE),
         ),
 

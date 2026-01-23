@@ -172,7 +172,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
 
   String _getVideoUrlBasedOnQuality() {
     final userId = widget.streamItem.userId;
-    final basePath = "http://192.168.3.220/live/$userId";
+    final basePath = "http://172.16.12.118/live/$userId";
 
     switch (_currentQuality) {
       case VideoQuality.high:
@@ -430,13 +430,13 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
     final currentUserId = widget.currentUser.userId; // user14
     final streamerId = widget.streamItem.userId; // user15
 
-    print("👉 FOLLOW CLICK");
-    print("👤 currentUserId = $currentUserId");
-    print("🎥 streamerId = $streamerId");
+    print("FOLLOW CLICK");
+    print("currentUserId = $currentUserId");
+    print("streamerId = $streamerId");
 
     // ❌ Không cho follow chính mình
     if (currentUserId == streamerId) {
-      print("❌ FOLLOW SELF - BLOCKED");
+      print("FOLLOW SELF - BLOCKED");
       return;
     }
 
@@ -460,13 +460,13 @@ class _LiveStreamScreenState extends State<LiveStreamScreen> {
         SnackBar(
           content: Text(
             _isFollowing
-                ? "✅ Đã theo dõi ${widget.streamItem.name}"
-                : "❌ Đã bỏ theo dõi",
+                ? "Đã theo dõi ${widget.streamItem.name}"
+                : "Đã bỏ theo dõi",
           ),
         ),
       );
     } catch (e) {
-      print("❌ Follow error: $e");
+      print("Follow error: $e");
     }
   }
 

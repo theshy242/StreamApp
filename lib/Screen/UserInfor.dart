@@ -30,7 +30,7 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
   final Random _random = Random();
   String? _serverError;
-  String _serverIp = '192.168.1.14'; // ĐỔI IP CỦA BẠN Ở ĐÂY
+  String _serverIp = '172.16.12.118'; // ĐỔI IP
 
   // 🔹 Danh sách API avatar
   final List<String> _avatarAPIs = [
@@ -140,7 +140,7 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Đăng xuất thất bại ❌"),
+          content: Text("Đăng xuất thất bại "),
         ),
       );
     }
@@ -159,7 +159,7 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
       final userId = await _findUserIdInFirebase();
 
       if (userId == null) {
-        print('❌ Cannot update: userId not found');
+        print(' Cannot update: userId not found');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Không tìm thấy thông tin user trong hệ thống'),
@@ -194,13 +194,13 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
             await _dbRef.child('streamItems').child(key.toString()).update({
               'image': newAvatarUrl,
             });
-            print('✅ Updated streamItems/$key/image');
+            print('Updated streamItems/$key/image');
           }
         } else {
-          print('ℹ️ No stream items found for this user');
+          print(' No stream items found for this user');
         }
       } catch (e) {
-        print('⚠️ Error updating streamItems: $e');
+        print(' Error updating streamItems: $e');
       }
 
       // 4. Cập nhật UI
@@ -248,7 +248,7 @@ class _InfoUserScreenState extends State<InfoUserScreen> {
       );
 
     } catch (error) {
-      print('❌ Update error: $error');
+      print(' Update error: $error');
       setState(() => _isLoading = false);
 
       ScaffoldMessenger.of(context).showSnackBar(

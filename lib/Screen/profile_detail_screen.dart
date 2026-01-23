@@ -23,17 +23,14 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
     with SingleTickerProviderStateMixin {
   bool isLoading = false;
   User? currentUser;
-
-  // ========== THÊM STATE CHO VODs ==========
   late TabController _tabController;
   List<StreamItem> _pastStreams = []; // Stream đã kết thúc = VODs (giữ nguyên)
   bool _isLoadingVODs = true;
 
-  // THÊM STATE MỚI CHO SERVER VODs
   List<Map<String, dynamic>> _serverVodList = [];
   bool _isLoadingServerVODs = true;
   String? _serverError;
-  String _serverIp = '192.168.3.220'; // THAY ĐỔI IP CỦA BẠN Ở ĐÂY
+  String _serverIp = '172.16.12.118'; // THAY ĐỔI IP
 
   // Database reference - GIỐNG NHƯ HOME SCREEN
   static FirebaseDatabase? _database;
@@ -80,7 +77,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
     }
   }
 
-  // ========== LOAD VODs TỪ SERVER - ĐÃ SỬA ==========
+  // ========== LOAD VODs TỪ SERVER
   Future<void> _loadVODsFromServer() async {
     if (mounted) {
       setState(() {
@@ -139,7 +136,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
     }
   }
 
-  // ========== LOAD VODs - LOGIC TƯƠNG TỰ HOME SCREEN (GIỮ NGUYÊN) ==========
+  // ========== LOAD VODs - LOGIC TƯƠNG TỰ HOME SCREEN
   void _loadPastStreams() {
     print("🔄 Bắt đầu load VODs từ Firebase cho user: ${widget.streamItem.userId}");
 

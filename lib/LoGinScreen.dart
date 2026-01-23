@@ -55,7 +55,7 @@ class _LoginScreenState extends State<LoginScreenb>
       setState(() => _loading = false);
 
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Đăng nhập thành công ✅")));
+          .showSnackBar(const SnackBar(content: Text("Đăng nhập thành công ")));
 
 
       Navigator.pushReplacement(
@@ -65,7 +65,7 @@ class _LoginScreenState extends State<LoginScreenb>
     } on FirebaseAuthException catch (e) {
       setState(() => _loading = false);
 
-      String message = "Đăng nhập thất bại ❌";
+      String message = "Đăng nhập thất bại ";
       if (e.code == 'user-not-found') {
         message = "Không tìm thấy tài khoản!";
       } else if (e.code == 'wrong-password') {
@@ -91,10 +91,8 @@ class _LoginScreenState extends State<LoginScreenb>
             fit: BoxFit.cover,
           ),
 
-          // Lớp mờ
           Container(color: Colors.black.withOpacity(0.6)),
 
-          // FORM LOGIN
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
@@ -127,7 +125,6 @@ class _LoginScreenState extends State<LoginScreenb>
                   ),
                   const SizedBox(height: 24),
 
-                  // Email
                   TextField(
                     controller: _emailController,
                     decoration: InputDecoration(

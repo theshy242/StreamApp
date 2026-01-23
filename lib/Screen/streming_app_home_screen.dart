@@ -49,12 +49,12 @@ import 'live_stream_screen.dart';
 
         Future<void> _initializeApp() async {
           try {
-            print('🟡 Initializing App...');
+            print('Initializing App...');
 
             // Initialize Firebase nếu chưa có
             if (Firebase.apps.isEmpty) {
               await Firebase.initializeApp();
-              print('✅ Firebase initialized');
+              print('Firebase initialized');
             }
 
             // Tạo database instance một lần
@@ -91,19 +91,19 @@ import 'live_stream_screen.dart';
 
           // Lắng nghe dữ liệu streams với debounce
           _streamsSubscription = streamsDbRef.onValue.listen((DatabaseEvent event) {
-            print('🔵 Streams data received');
+            print('Streams data received');
 
             final data = event.snapshot.value;
 
             if (data == null) {
-              print('⚠️ No streams data in Firebase, using mock data');
+              print(' No streams data in Firebase, using mock data');
               _loadMockData();
               return;
             }
 
             try {
               final dataMap = data as Map<dynamic, dynamic>;
-              print('✅ Streams data map length: ${dataMap.length}');
+              print(' Streams data map length: ${dataMap.length}');
 
               final List<StreamItem> tempList = [];
               dataMap.forEach((key, value) {
@@ -112,7 +112,7 @@ import 'live_stream_screen.dart';
                   final streamItem = StreamItem.fromJson(itemData);
                   tempList.add(streamItem);
                 } catch (e) {
-                  print('⚠️ Error parsing stream $key: $e');
+                  print(' Error parsing stream $key: $e');
                 }
               });
 
@@ -126,13 +126,13 @@ import 'live_stream_screen.dart';
               }
 
             } catch (e) {
-              print('❌ Streams data processing error: $e');
+              print('Streams data processing error: $e');
               if (mounted) {
                 _loadMockData();
               }
             }
           }, onError: (error) {
-            print('❌ Streams listener error: $error');
+            print(' Streams listener error: $error');
             if (mounted) {
               _loadMockData();
             }
@@ -140,12 +140,12 @@ import 'live_stream_screen.dart';
 
           // Lắng nghe dữ liệu categories
           _categoriesSubscription = categoriesDbRef.onValue.listen((DatabaseEvent event) {
-            print('🟣 Categories data received');
+            print(' Categories data received');
 
             final data = event.snapshot.value;
 
             if (data == null) {
-              print('⚠️ No categories data in Firebase, using default');
+              print(' No categories data in Firebase, using default');
               return;
             }
 
@@ -159,7 +159,7 @@ import 'live_stream_screen.dart';
                   final category = StreamCategory.fromJson(categoryData);
                   tempCategories.add(category);
                 } catch (e) {
-                  print('⚠️ Error parsing category $key: $e');
+                  print('Error parsing category $key: $e');
                 }
               });
 
@@ -171,14 +171,14 @@ import 'live_stream_screen.dart';
                     _filterStreams();
                   }
                 });
-                print('✅ Loaded ${categories.length} categories');
+                print(' Loaded ${categories.length} categories');
               }
 
             } catch (e) {
-              print('❌ Categories data processing error: $e');
+              print(' Categories data processing error: $e');
             }
           }, onError: (error) {
-            print('❌ Categories listener error: $error');
+            print(' Categories listener error: $error');
           });
         }
 
@@ -324,7 +324,7 @@ import 'live_stream_screen.dart';
               }
             }
           } catch (e) {
-            print('❌ Error finding user: $e');
+            print(' Error finding user: $e');
           }
 
           return null;
